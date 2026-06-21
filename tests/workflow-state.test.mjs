@@ -17,8 +17,6 @@ test("source identity contains no legacy runner brand strings", () => {
     [".", "cod", "ing", "-agents"].join(""),
     ["cod", "ing", "_agents"].join(""),
     ["COD", "ING", "_AGENTS"].join(""),
-    ["cod", "ing", "-agent"].join(""),
-    ["Cod", "ing ", "Agent"].join(""),
   ];
   const listed = spawnSync("git", ["ls-files"], { cwd: REPO_ROOT, encoding: "utf8" });
   assert.equal(listed.status, 0, listed.stderr);
@@ -518,14 +516,14 @@ test("old workflow state without workflow profile fields behaves as default", ()
   }
 });
 
-test("explicit non-default workflow profile persists separately from feature profiles", () => {
+test("coding-agent workflow profile persists separately from feature profiles and runner packets inherit it", () => {
   const repo = makeTempGitRepo();
   try {
     intake(repo, {
-      taskId: "workflow-plugin-source",
+      taskId: "workflow-coding-agent",
       epoch: "e1",
       scope: "README.md",
-      workflowProfile: "plugin-source",
+      workflowProfile: "coding-agent",
     });
 
     const project = readState(repo, "project.md");
@@ -533,9 +531,9 @@ test("explicit non-default workflow profile persists separately from feature pro
     const assignments = readState(repo, "assignments.md");
     const handoff = readState(repo, "handoff.md");
     for (const text of [project, task, assignments, handoff]) {
-      assert.match(text, /workflow_profile: plugin-source/);
-      assert.match(text, /workflow_domain: agentic-runner\.plugin-source/);
-      assert.match(text, /workflow_domain_contract: agentic-runner\.workflow\.plugin-source\.v1/);
+      assert.match(text, /workflow_profile: coding-agent/);
+      assert.match(text, /workflow_domain: agentic-runner\.coding-agent/);
+      assert.match(text, /workflow_domain_contract: agentic-runner\.workflow\.coding-agent\.v1/);
     }
     assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent)(.+)$/gm)].length, 14);
 
@@ -546,7 +544,7 @@ test("explicit non-default workflow profile persists separately from feature pro
       "--role",
       "Implementer",
       "--task-id",
-      "workflow-plugin-source",
+      "workflow-coding-agent",
       "--epoch",
       "e1",
       "--scope",
@@ -562,9 +560,31 @@ test("explicit non-default workflow profile persists separately from feature pro
 
     const runner = readState(repo, "runner.md");
     assert.match(runner, /feature_profile: debug\.reproducer/);
-    assert.match(runner, /workflow_profile: plugin-source/);
-    assert.match(runner, /workflow_domain_contract: agentic-runner\.workflow\.plugin-source\.v1/);
+    assert.match(runner, /workflow_profile: coding-agent/);
+    assert.match(runner, /workflow_domain_contract: agentic-runner\.workflow\.coding-agent\.v1/);
     assert.doesNotMatch(assignments, /feature_profile: debug\.reproducer/);
+    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("plugin-source workflow profile remains a narrower source cache boundary profile", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, {
+      taskId: "workflow-plugin-source",
+      epoch: "e1",
+      scope: "README.md",
+      workflowProfile: "plugin-source",
+    });
+
+    const task = readState(repo, "task.md");
+    const assignments = readState(repo, "assignments.md");
+    assert.match(task, /workflow_profile: plugin-source/);
+    assert.match(task, /workflow_domain: agentic-runner\.plugin-source/);
+    assert.match(task, /workflow_domain_contract: agentic-runner\.workflow\.plugin-source\.v1/);
+    assert.match(assignments, /workflow_profile_guidance: Narrow metadata-only profile for plugin source work/);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -578,7 +598,7 @@ test("workflow profiles cannot be overridden by runner packets", () => {
       taskId: "workflow-packet-override",
       epoch: "e1",
       scope: "README.md",
-      workflowProfile: "plugin-source",
+      workflowProfile: "coding-agent",
     });
 
     const rejected = runCli([
@@ -594,7 +614,7 @@ test("workflow profiles cannot be overridden by runner packets", () => {
       "--scope",
       "README.md",
       "--workflow-profile",
-      "default",
+      "plugin-source",
       "--assignment",
       "try to override workflow profile from a runner packet",
       "--expected-output",
@@ -615,12 +635,12 @@ test("doctor and verify reject unknown workflow profile in task state", () => {
       taskId: "workflow-corrupt-profile",
       epoch: "e1",
       scope: "README.md",
-      workflowProfile: "plugin-source",
+      workflowProfile: "coding-agent",
     });
     const taskPath = path.join(repo, ".agentic-runner", "task.md");
     writeFileSync(
       taskPath,
-      readFileSync(taskPath, "utf8").replace("workflow_profile: plugin-source", "workflow_profile: impossible-profile"),
+      readFileSync(taskPath, "utf8").replace("workflow_profile: coding-agent", "workflow_profile: impossible-profile"),
       "utf8",
     );
 
@@ -656,7 +676,7 @@ test("unknown workflow profile fails before writing state", () => {
     ]);
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, /unknown workflow profile: unknown-domain/);
-    assert.match(rejected.stderr, /default, plugin-source/);
+    assert.match(rejected.stderr, /default, coding-agent, plugin-source/);
     assert.equal(existsSync(path.join(repo, ".agentic-runner")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });

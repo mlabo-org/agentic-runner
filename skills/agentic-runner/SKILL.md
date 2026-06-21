@@ -1,6 +1,6 @@
 ---
 name: agentic-runner
-description: Use when the user explicitly asks for Agentic Runner or agentic-runner to intake/audit a target repo, maintain .agentic-runner workflow state, coordinate scoped assignments, run the source CLI, enforce self-host/debug/source-change gates, print handoff, or migrate legacy docs/codex. Do not use for generic one-off edits.
+description: Use when the user explicitly asks for Agentic Runner or agentic-runner to intake/audit a target repo, maintain .agentic-runner workflow state, manage workflow profiles/domain contracts, coordinate scoped assignments, run the source CLI, enforce self-host/debug/source-change gates, print handoff, or migrate legacy docs/codex. Do not use for generic one-off edits.
 ---
 
 # Agentic Runner
@@ -85,9 +85,12 @@ Codex は、本書の発火前提、作業手順、ツール境界、ファイ�
   - `hierarchy_mode: one_level` means the assigned worker may create direct children only. Set `max_depth: 1`, `depth: 0`, and `remaining_depth: 1` for that worker; any direct child receives `depth: 1` and `remaining_depth: 0`.
   - `hierarchy_mode: n_level` means a bounded descendant chain is permitted. The parent must set a positive finite `max_depth`; the assigned worker receives the current `depth` and calculated `remaining_depth`, and each descendant receives incremented `depth` plus decremented `remaining_depth`.
   - Infinite or unbounded delegation depth is invalid. Missing or non-finite `max_depth`, `depth`, or `remaining_depth` is non-completion for delegated assignment material.
-- A scoped assignment may also include `--feature-profile <id>`. Treat feature profiles as optional assignment overlays that add routing/debug guidance to that specific assignment instance; they are not additional scaffold roles, resident agents, spawned workers, or a substitute for `task_id`, `epoch`, `scope`, and `lifecycle`.
+- Intake may include `--workflow-profile <id>`. Treat workflow profiles as intake-only workflow/domain-contract metadata that writes `workflow_profile`, `workflow_domain`, and `workflow_domain_contract` into generated state. They are not assignment overlays, roles, spawned workers, lifecycle states, or gate permissions.
+- Known workflow profile ids are `default`, `coding-agent`, and `plugin-source`. `default` preserves backward-compatible Agentic Runner behavior. `coding-agent` is the first practical profile for code generation and debugging. `plugin-source` is a narrower source/cache/runtime-boundary profile for plugin source work. Unknown workflow profile ids must fail before `.agentic-runner/` state is written.
+- Runner packets, assignments, collection, `run`, and `orchestrate` inherit workflow profile metadata from current intake state. They must reject `--workflow-profile`; changing workflow/domain contract requires a fresh intake. Missing `workflow_profile` in existing workflow state means `default`; an unknown value in `task.md` is a validation failure for `doctor` and `verify-assignments`.
+- A scoped assignment may also include `--feature-profile <id>`. Treat feature profiles as optional assignment overlays that add routing/debug guidance to that specific assignment instance; they are not workflow profiles, domain contracts, additional scaffold roles, resident agents, spawned workers, or a substitute for `task_id`, `epoch`, `scope`, and `lifecycle`.
 - Known feature profile ids are `debug.reproducer`, `debug.failure-boundary`, `debug.hypothesis-splitter`, `debug.fix-verifier`, `runner.scope-guard`, `plugin.activation-guard`, `source.cache-boundary`, and `workflow.state-safety`. Unknown ids must fail before `.agentic-runner/runner.md` is appended.
-- A scoped assignment, integration packet, intake, or runner command may also include `--work-type <id>`. Treat work types as command metadata for gate classification only; they are not roles, feature profiles, lifecycle states, or permission to weaken source-change/debug/root-cause requirements.
+- A scoped assignment, integration packet, intake, or runner command may also include `--work-type <id>`. Treat work types as command metadata for gate classification only; they are not workflow profiles, roles, feature profiles, lifecycle states, or permission to weaken source-change/debug/root-cause requirements.
 - Unknown work type ids must fail before `.agentic-runner/runner.md` is appended. Missing `work_type` in existing workflow state or packets means `auto`.
 - Treat `task_id` as the unit of user-visible work, `epoch` as the restart boundary for stale context, and `scope` as the allowed file, tool, or investigation boundary.
 - When a child worker is operating under a parent-managed Agentic Runner assignment, the parent has already selected Agentic Runner for that scoped assignment. The child worker must not ask `agentic-runner を使いますか？ [Y/n]` and must not start an independent nested Agentic Runner workflow. It may delegate descendants only when finite hierarchy fields grant `remaining_depth > 0`, while keeping the same `task_id`, `epoch`, `scope` lineage and inherited supervision. It proceeds directly within the assigned `task_id`, `epoch`, and `scope`, while still stopping before scope expansion, destructive operations, external sending, commits, cache refresh, plugin activation, or unrelated edits.
@@ -114,7 +117,7 @@ Codex は、本書の発火前提、作業手順、ツール境界、ファイ�
 
 - `<git-root>/.agentic-runner/README.md`: reader order and role map for Codex-facing workflow files.
 - `<git-root>/.agentic-runner/project.md`: project intake summary for the jobsite itself.
-- `<git-root>/.agentic-runner/task.md`: current task SSOT, including purpose, scope, semantic `work_type`, non-goals, completion conditions, permitted hierarchy mode, and supervision defaults when the task uses long-running or delegated assignments.
+- `<git-root>/.agentic-runner/task.md`: current task SSOT, including purpose, scope, intake-only `workflow_profile` / `workflow_domain` / `workflow_domain_contract`, semantic `work_type`, non-goals, completion conditions, permitted hierarchy mode, and supervision defaults when the task uses long-running or delegated assignments.
 - `<git-root>/.agentic-runner/todo.md`: executable checklist with stable task IDs.
 - `<git-root>/.agentic-runner/decisions.md`: accepted decisions with IDs and implementation impact.
 - `<git-root>/.agentic-runner/audit.md`: audit log, completed checks, skipped checks, next audit needs, debug root-cause verification when the task is a debug or repair task, context-impact or cross-feature checks when the Meta-Cognitive Debug/Repair Gate fires, and any subagent cancellation with its allowed reason and stale-path evidence.
@@ -137,8 +140,9 @@ Use the source CLI when the user wants to test source-tree behavior before plugi
 2. Resolve the target jobsite path. Use `--target-cwd <jobsite>` for explicit cross-repo target selection; if no target is provided, use `invocation_cwd` as the jobsite.
 3. Resolve the jobsite Git root. Confirm the jobsite repository's `<git-root>/.agentic-runner/` as the workflow state root before state writes.
 4. Ensure the jobsite repository's `.git/info/exclude` ignores `.agentic-runner/`; do not edit tracked `.gitignore` unless explicitly requested.
-5. Run intake with explicit isolation keys and optional semantic work metadata:
-   `node /Users/suzukimakoto/plugins/agentic-runner/bin/agentic-runner.mjs intake --target-cwd <jobsite> --work-type <auto|documentation|source-change|debug> --task <task> --task-id <id> --epoch <epoch> --scope <scope>`.
+5. Run intake with explicit isolation keys, optional intake-only workflow profile metadata, and optional semantic work metadata:
+   `node /Users/suzukimakoto/plugins/agentic-runner/bin/agentic-runner.mjs intake --target-cwd <jobsite> --workflow-profile <default|coding-agent|plugin-source> --work-type <auto|documentation|source-change|debug> --task <task> --task-id <id> --epoch <epoch> --scope <scope>`.
+   Use `coding-agent` as the first practical profile for code generation and debugging. Omit `--workflow-profile` only when backward-compatible `default` behavior is intended. Use `plugin-source` only when the narrower source/cache/runtime boundary is the intended domain contract.
 6. Run doctor:
    `node /Users/suzukimakoto/plugins/agentic-runner/bin/agentic-runner.mjs doctor --target-cwd <jobsite>`.
 7. Print handoff when needed:
@@ -147,7 +151,7 @@ Use the source CLI when the user wants to test source-tree behavior before plugi
    `node /Users/suzukimakoto/plugins/agentic-runner/bin/agentic-runner.mjs normalize-debugging-integrity --target-cwd <jobsite>`.
    Apply only after confirming the target state directory:
    `node /Users/suzukimakoto/plugins/agentic-runner/bin/agentic-runner.mjs normalize-debugging-integrity --target-cwd <jobsite> --execute`.
-9. For `assign`, `collect`, `run`, or `orchestrate`, record operational packets in the jobsite repository's `.agentic-runner/runner.md`. Use `--feature-profile <id>` only as an optional scoped overlay for that assignment instance, and keep missing profiles as `feature_profile: none`. Use `--work-type <id>` only as semantic command metadata for gate classification, and keep missing work types as `work_type: auto`.
+9. For `assign`, `collect`, `run`, or `orchestrate`, record operational packets in the jobsite repository's `.agentic-runner/runner.md`. Do not pass `--workflow-profile` to runner commands; packets inherit the current intake's workflow profile and must stop if state contains an unknown workflow profile. Use `--feature-profile <id>` only as an optional scoped overlay for that assignment instance, and keep missing profiles as `feature_profile: none`. Use `--work-type <id>` only as semantic command metadata for gate classification, and keep missing work types as `work_type: auto`.
    When `run --runner codex-cli` is used, treat `--scope` as runner machine input:
    - Stop before appending `.agentic-runner/runner.md` or launching the runner when `--scope` is empty, ambiguous prose, negative/exclusion wording, or otherwise not machine-checkable.
    - Use quoted `--scope "scope:v1 all"` for the whole repo.

@@ -110,10 +110,15 @@ const WORKFLOW_PROFILE_CONTRACTS = {
     contract: "agentic-runner.workflow.default.v1",
     guidance: "Default Agentic Runner workflow behavior; preserves the fixed 14-role scaffold, supervision, debugging integrity, and metacognitive gate semantics.",
   },
+  "coding-agent": {
+    domain: "agentic-runner.coding-agent",
+    contract: "agentic-runner.workflow.coding-agent.v1",
+    guidance: "First practical workflow profile for code generation and debugging; records coding-agent domain intent while preserving intake-only workflow metadata, fixed scaffold, feature-profile overlays, work-type gates, debugging integrity, and metacognitive gate semantics.",
+  },
   "plugin-source": {
     domain: "agentic-runner.plugin-source",
     contract: "agentic-runner.workflow.plugin-source.v1",
-    guidance: "Metadata-only profile for plugin source work; keeps source/cache/runtime boundaries visible while preserving the default scaffold and gates.",
+    guidance: "Narrow metadata-only profile for plugin source work; keeps source/cache/runtime boundaries visible while preserving the default scaffold, coding-agent profile option, and gates.",
   },
 };
 const DEFAULT_WORKFLOW_PROFILE = "default";
