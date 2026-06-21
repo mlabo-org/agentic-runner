@@ -1,0 +1,8 @@
+{
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:cli": "node --test tests/metacognitive-gate.test.mjs tests/workflow-state.test.mjs",
+    "doctor:self": "node bin/coding-agents.mjs doctor --target-cwd ."
+  }
+}

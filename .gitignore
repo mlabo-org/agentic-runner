@@ -1,0 +1,34 @@
+# Runtime and cache
+.codex/
+.agents/
+cache/
+runtime/
+tmp/
+temp/
+
+# Logs and local state
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+secrets/
+
+# Python bytecode and local tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS and editor noise
+.DS_Store
+.idea/
+.vscode/
