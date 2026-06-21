@@ -15,7 +15,7 @@
   ],
   "interface": {
     "displayName": "Agentic Runner",
-    "shortDescription": "Target-repo intake, fixed role scaffold, supervised scoped assignment packets, source-change/debug gates, and explicit self-host gating.",
+    "shortDescription": "Target-repo workflow state, scoped assignments, handoff/audit, source CLI, and self-host/debug/source-change gates.",
     "longDescription": "Resolves the jobsite or explicit --target-cwd repository, stores .agentic-runner state under that target git root, and records a fixed role scaffold plus optional supervised scoped assignment packets for parent-managed specialist work. It supports finite delegation depth, heartbeat-based long-running worker supervision, stale-safe cancellation rules, intake, planning, audit, source-change metacognitive gating, debug root-cause integrity, metacognitive context-impact checks, and an explicit self-host gate so Agentic Runner source edits remain external-supervised by default.",
     "developerName": "suzukimakoto",
     "category": "Productivity",

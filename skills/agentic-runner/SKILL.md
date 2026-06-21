@@ -1,6 +1,6 @@
 ---
 name: agentic-runner
-description: Use when the user wants the Agentic Runner workflow or source CLI to intake a jobsite/target cwd, maintain the target git root's <git-root>/.agentic-runner/ workflow state even when invoked cross-repo, assign/collect/run scoped specialist work with task_id/epoch/scope/lifecycle isolation, finite delegation depth, long-running subagent supervision, optional feature-profile assignment overlays, semantic --work-type metadata, and an explicit self-host gate for Agentic Runner source edits, enforce prompt subagent close/retire handling without premature interruption of quiet workers, enforce debugging root-cause integrity and the metacognitive source-change/debug/repair gate for source-change, debug, repair, source-of-truth, plugin-contract, generated-artifact inconsistency, before/after context, or cross-feature consequences work, print a handoff prompt, audit workflow state, or migrate legacy docs/codex material. Trigger for explicit requests to initialize, plan, execute, coordinate, or audit agentic source work with the agentic-runner plugin or source MVP. Do not use for generic one-off edits, and do not treat docs/codex as current workflow state.
+description: Use when the user explicitly asks for Agentic Runner or agentic-runner to intake/audit a target repo, maintain .agentic-runner workflow state, coordinate scoped assignments, run the source CLI, enforce self-host/debug/source-change gates, print handoff, or migrate legacy docs/codex. Do not use for generic one-off edits.
 ---
 
 # Agentic Runner
