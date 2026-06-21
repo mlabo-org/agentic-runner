@@ -1,10 +1,10 @@
 {
-  "name": "coding-agents",
+  "name": "agentic-runner",
   "version": "0.1.0",
-  "description": "対象 jobsite の Git root に .coding-agents 状態を置き、固定ロール scaffold、有限階層の supervised scoped assignment packet、intake / planning / audit、source-change gate、DEBUG 根本原因ゲート、metacognitive source-change/debug/repair gate を支援する。",
+  "description": "対象 jobsite の Git root に .agentic-runner 状態を置き、固定ロール scaffold、有限階層の supervised scoped assignment packet、intake / planning / audit、source-change gate、DEBUG 根本原因ゲート、metacognitive source-change/debug/repair gate を支援する。",
   "skills": "./skills/",
   "keywords": [
-    "coding-agents",
+    "agentic-runner",
     "project-intake",
     "subagents",
     "subagent-supervision",
@@ -14,9 +14,9 @@
     "source-change-gate"
   ],
   "interface": {
-    "displayName": "Coding Agents",
+    "displayName": "Agentic Runner",
     "shortDescription": "Target-repo intake, fixed role scaffold, supervised scoped assignment packets, finite delegation depth, source-change gates, debug gates, and context-impact checks.",
-    "longDescription": "Resolves the jobsite or explicit --target-cwd repository, stores .coding-agents state under that target git root, and records a fixed role scaffold plus optional supervised scoped assignment packets for parent-managed specialist work. It supports finite delegation depth, heartbeat-based long-running worker supervision, stale-safe cancellation rules, intake, planning, audit, source-change metacognitive gating, debug root-cause integrity, and metacognitive context-impact checks without implying resident agents are active.",
+    "longDescription": "Resolves the jobsite or explicit --target-cwd repository, stores .agentic-runner state under that target git root, and records a fixed role scaffold plus optional supervised scoped assignment packets for parent-managed specialist work. It supports finite delegation depth, heartbeat-based long-running worker supervision, stale-safe cancellation rules, intake, planning, audit, source-change metacognitive gating, debug root-cause integrity, and metacognitive context-impact checks without implying resident agents are active.",
     "developerName": "suzukimakoto",
     "category": "Productivity",
     "capabilities": [
@@ -26,9 +26,9 @@
       "Audit"
     ],
     "defaultPrompt": [
-      "Run Coding Agents intake for this target repo.",
-      "Create supervised Coding Agents scoped assignment packets for this active task.",
-      "Audit the completed coding-agent work."
+      "Run Agentic Runner intake for this target repo.",
+      "Create supervised Agentic Runner scoped assignment packets for this active task.",
+      "Audit the completed agentic-runner work."
     ],
     "brandColor": "#2563EB"
   }

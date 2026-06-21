@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const CLI = path.join(REPO_ROOT, "bin", "coding-agents.mjs");
+const CLI = path.join(REPO_ROOT, "bin", "agentic-runner.mjs");
 
 const META_ARGS = [
   "--expected-outcome",
@@ -21,11 +21,11 @@ const META_ARGS = [
   "--hypothesis-branches",
   "missing state gate versus missing completed packet fields",
   "--source-of-truth-boundary",
-  "source CLI under test owns bin/coding-agents.mjs",
+  "source CLI under test owns bin/agentic-runner.mjs",
   "--plugin-contract-boundary",
   "plugin cache and activation are out of scope",
   "--generated-artifact-boundary",
-  ".coding-agents runner state is generated workflow state",
+  ".agentic-runner runner state is generated workflow state",
   "--before-context-effects",
   "before the fix completed packets could rely on passive debugging prose",
   "--after-context-effects",
@@ -60,7 +60,7 @@ test("intake makes the metacognitive gate visible and verifiable for gate-requir
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs generated-artifact inconsistency",
+      "bin/agentic-runner.mjs generated-artifact inconsistency",
     ]);
 
     assert.equal(intake.status, 0, intake.stderr);
@@ -97,20 +97,20 @@ test("collect rejects completed gate-required packets without metacognitive fiel
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
       "fixed",
       "--changed-files",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--verification",
       "not run",
     ]);
 
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stderr, /collect --status completed rejected/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     const placeholderEvidence = runCli([
       "collect",
@@ -123,13 +123,13 @@ test("collect rejects completed gate-required packets without metacognitive fiel
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
       "fixed",
       "--changed-files",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--verification",
       "not run",
       ...placeholderMetaArgs("none"),
@@ -137,7 +137,7 @@ test("collect rejects completed gate-required packets without metacognitive fiel
     assert.notEqual(placeholderEvidence.status, 0);
     assert.match(placeholderEvidence.stderr, /expected_outcome/);
     assert.match(placeholderEvidence.stderr, /verification/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     const doneEvidence = runCli([
       "collect",
@@ -150,13 +150,13 @@ test("collect rejects completed gate-required packets without metacognitive fiel
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
       "fixed",
       "--changed-files",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--verification",
       "done",
       ...placeholderMetaArgs("done"),
@@ -164,7 +164,7 @@ test("collect rejects completed gate-required packets without metacognitive fiel
     assert.notEqual(doneEvidence.status, 0);
     assert.match(doneEvidence.stderr, /expected_outcome/);
     assert.match(doneEvidence.stderr, /verification/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     const proseOnlyEvidence = runCli([
       "collect",
@@ -177,20 +177,20 @@ test("collect rejects completed gate-required packets without metacognitive fiel
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
       "fixed",
       "--changed-files",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--verification",
       "I checked it carefully",
       ...placeholderMetaArgs("I reviewed the work carefully"),
     ]);
     assert.notEqual(proseOnlyEvidence.status, 0);
     assert.match(proseOnlyEvidence.stderr, /source_of_truth_boundary|verification/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     const missingContext = runCli([
       "collect",
@@ -203,13 +203,13 @@ test("collect rejects completed gate-required packets without metacognitive fiel
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
       "fixed",
       "--changed-files",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--verification",
       "node --test",
       ...withoutMetaArgs("--before-context-effects", "--after-context-effects", "--cross-feature-consequences"),
@@ -218,7 +218,7 @@ test("collect rejects completed gate-required packets without metacognitive fiel
     assert.match(missingContext.stderr, /before_context_effects/);
     assert.match(missingContext.stderr, /after_context_effects/);
     assert.match(missingContext.stderr, /cross_feature_consequences/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     const blocked = runCli([
       "collect",
@@ -231,7 +231,7 @@ test("collect rejects completed gate-required packets without metacognitive fiel
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "blocked",
       "--findings",
@@ -258,13 +258,13 @@ test("collect rejects completed gate-required packets without metacognitive fiel
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
       "fixed",
       "--changed-files",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--verification",
       "node --test",
       ...META_ARGS,
@@ -315,13 +315,13 @@ test("source-change work triggers the metacognitive gate", () => {
       "--target-cwd",
       repo,
       "--task",
-      "Implement source change in bin/coding-agents.mjs and update tests",
+      "Implement source change in bin/agentic-runner.mjs and update tests",
       "--task-id",
       "meta-source-change",
       "--epoch",
       "e1",
       "--scope",
-      "source-change metacognitive baseline in bin/coding-agents.mjs",
+      "source-change metacognitive baseline in bin/agentic-runner.mjs",
     ]);
 
     assert.equal(intake.status, 0, intake.stderr);
@@ -340,13 +340,13 @@ test("source-change work triggers the metacognitive gate", () => {
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
       "patched source",
       "--changed-files",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--verification",
       "not run",
     ]);
@@ -464,7 +464,7 @@ test("explicit auto work type preserves current keyword and path inference", () 
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
     ]);
 
     assert.equal(intake.status, 0, intake.stderr);
@@ -481,7 +481,7 @@ test("source, test, and config path scopes trigger the metacognitive gate even w
   const repo = makeTempGitRepo();
   try {
     for (const [taskId, scope] of [
-      ["meta-path-source", "bin/coding-agents.mjs"],
+      ["meta-path-source", "bin/agentic-runner.mjs"],
       ["meta-path-test", "tests/workflow-state.test.mjs"],
       ["meta-path-config", "package.json"],
     ]) {
@@ -548,7 +548,7 @@ test("Japanese source edit wording triggers the metacognitive gate", () => {
       "--epoch",
       "e1",
       "--scope",
-      "コード修正: bin/coding-agents.mjs",
+      "コード修正: bin/agentic-runner.mjs",
     ]);
 
     assert.equal(intake.status, 0, intake.stderr);
@@ -577,23 +577,23 @@ test("completion status synonyms cannot bypass gate-required completion validati
         "--epoch",
         "e1",
         "--scope",
-        "bin/coding-agents.mjs",
+        "bin/agentic-runner.mjs",
         "--status",
         status,
         "--findings",
         "fixed",
         "--changed-files",
-        "bin/coding-agents.mjs",
+        "bin/agentic-runner.mjs",
         "--verification",
         "not run",
       ]);
 
       assert.notEqual(rejected.status, 0, `${status} unexpectedly passed`);
       assert.match(rejected.stderr, new RegExp(`collect --status ${status} rejected`));
-      assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+      assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
     }
 
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), completionSynonymRunner("meta-completion-synonyms", "success"), "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), completionSynonymRunner("meta-completion-synonyms", "success"), "utf8");
     const verify = runCli(["verify-assignments", "--target-cwd", repo]);
     assert.notEqual(verify.status, 0);
     assert.match(verify.stdout, /expected_outcome/);
@@ -626,7 +626,7 @@ test("assign and run skeletons carry the metacognitive gate for gate-required wo
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--assignment",
       "repair source-of-truth contract drift",
       "--expected-output",
@@ -645,7 +645,7 @@ test("assign and run skeletons carry the metacognitive gate for gate-required wo
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--assignment",
       "verify generated-artifact inconsistency repair",
       "--expected-output",
@@ -667,7 +667,7 @@ test("assign and run skeletons carry the metacognitive gate for gate-required wo
 
 test("run runner results reject completed metacognitive packets with low-information evidence", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     intakeGateRequired(repo, "meta-run-result");
     const fakeCodex = path.join(fakeBin, "codex");
@@ -691,7 +691,7 @@ process.stdout.write("fake codex completed\\n");
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--assignment",
       "repair source-of-truth contract drift",
       "--expected-output",
@@ -727,7 +727,7 @@ test("doctor does not accept fenced fake metacognitive result fields", () => {
 ${metacognitiveEvidenceLines()}
 \`\`\`
 `;
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), runner, "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), runner, "utf8");
 
     const doctor = runCli(["doctor", "--target-cwd", repo]);
     assert.notEqual(doctor.status, 0);
@@ -742,7 +742,7 @@ test("verify-assignments does not accept fenced fake metacognitive gate heading"
   const repo = makeTempGitRepo();
   try {
     intakeGateRequired(repo, "meta-fenced-heading");
-    const assignmentsPath = path.join(repo, ".coding-agents", "assignments.md");
+    const assignmentsPath = path.join(repo, ".agentic-runner", "assignments.md");
     const assignments = readFileSync(assignmentsPath, "utf8");
     const corrupted = `${stripMetacognitiveLines(assignments)}
 
@@ -769,10 +769,10 @@ test("normalization recovers stale pre-gate state without faking completed evide
   const repo = makeTempGitRepo();
   try {
     intakeGateRequired(repo, "meta-stale");
-    const assignmentsPath = path.join(repo, ".coding-agents", "assignments.md");
+    const assignmentsPath = path.join(repo, ".agentic-runner", "assignments.md");
     const staleAssignments = stripMetacognitiveLines(readFileSync(assignmentsPath, "utf8"));
     writeFileSync(assignmentsPath, staleAssignments, "utf8");
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), staleRunner("meta-stale"), "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), staleRunner("meta-stale"), "utf8");
 
     const verify = runCli(["verify-assignments", "--target-cwd", repo]);
     assert.notEqual(verify.status, 0);
@@ -821,7 +821,7 @@ test("normalization recovers stale pre-gate state without faking completed evide
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--assignment",
       "repair source-of-truth contract drift",
       "--expected-output",
@@ -840,13 +840,13 @@ test("normalization recovers stale pre-gate state without faking completed evide
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
       "fixed",
       "--changed-files",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--verification",
       "not run",
     ]);
@@ -862,7 +862,7 @@ test("normalization and intake strip stale active-looking preamble from generate
   try {
     intakeGateRequired(repo, "meta-preamble");
     for (const file of ["task.md", "project.md", "decisions.md", "handoff.md"]) {
-      const filePath = path.join(repo, ".coding-agents", file);
+      const filePath = path.join(repo, ".agentic-runner", file);
       writeFileSync(filePath, staleActivePreamble(file) + readFileSync(filePath, "utf8"), "utf8");
     }
 
@@ -877,12 +877,12 @@ test("normalization and intake strip stale active-looking preamble from generate
     assert.equal(normalized.status, 0, normalized.stderr);
     for (const file of ["task.md", "project.md", "decisions.md", "handoff.md"]) {
       const text = readState(repo, file);
-      assert.match(text, /^<!-- coding-agents-mvp:start -->/);
+      assert.match(text, /^<!-- agentic-runner-mvp:start -->/);
       assert.doesNotMatch(text, /T-007\.5|docs\/codex active state|CA-RUNNER-DOCS-FINALIZE-001/);
     }
 
     for (const file of ["task.md", "project.md", "decisions.md", "handoff.md"]) {
-      const filePath = path.join(repo, ".coding-agents", file);
+      const filePath = path.join(repo, ".agentic-runner", file);
       writeFileSync(filePath, staleActivePreamble(file) + readFileSync(filePath, "utf8"), "utf8");
     }
     const intake = runCli([
@@ -901,7 +901,7 @@ test("normalization and intake strip stale active-looking preamble from generate
     assert.equal(intake.status, 0, intake.stderr);
     for (const file of ["task.md", "project.md", "decisions.md", "handoff.md"]) {
       const text = readState(repo, file);
-      assert.match(text, /^<!-- coding-agents-mvp:start -->/);
+      assert.match(text, /^<!-- agentic-runner-mvp:start -->/);
       assert.match(text, /meta-preamble-next/);
       assert.doesNotMatch(text, /T-007\.5|docs\/codex active state|CA-RUNNER-DOCS-FINALIZE-001/);
     }
@@ -926,7 +926,7 @@ test("commands default the target cwd to process cwd when no cwd flags are provi
     ], { cwd: repo });
     assert.equal(intake.status, 0, intake.stderr);
     const project = readState(repo, "project.md");
-    assert.match(project, /target_cwd: .*coding-agents-meta-/);
+    assert.match(project, /target_cwd: .*agentic-runner-meta-/);
     assert.match(project, /task_id: meta-default-cwd/);
 
     assert.equal(runCli(["verify-assignments"], { cwd: repo }).status, 0);
@@ -1005,7 +1005,7 @@ test("documentation work type cannot downgrade an existing gate-required workflo
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--assignment",
       "write documentation notes for the gate-required source task",
       "--expected-output",
@@ -1029,7 +1029,7 @@ test("documentation work type cannot downgrade an existing gate-required workflo
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--status",
       "completed",
       "--findings",
@@ -1059,13 +1059,13 @@ function intakeGateRequired(repo, taskId) {
     "--epoch",
     "e1",
     "--scope",
-    "bin/coding-agents.mjs",
+    "bin/agentic-runner.mjs",
   ]);
   assert.equal(result.status, 0, result.stderr);
 }
 
 function makeTempGitRepo() {
-  const repo = mkdtempSync(path.join(os.tmpdir(), "coding-agents-meta-"));
+  const repo = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-meta-"));
   const init = spawnSync("git", ["init"], { cwd: repo, encoding: "utf8" });
   assert.equal(init.status, 0, init.stderr);
   return repo;
@@ -1081,7 +1081,7 @@ function runCli(args, options = {}) {
 }
 
 function readState(repo, file) {
-  return readFileSync(path.join(repo, ".coding-agents", file), "utf8");
+  return readFileSync(path.join(repo, ".agentic-runner", file), "utf8");
 }
 
 function withoutMetaArgs(...omittedFlags) {
@@ -1117,14 +1117,14 @@ function metacognitiveEvidenceLines() {
     reproduction_or_evidence: "node --test tests/metacognitive-gate.test.mjs reproduced runner.md fenced fields",
     failure_point: "readMetacognitiveFieldsFromSection previously read fenced runner.md body fields",
     hypothesis_branches: "source parser versus generated runner state versus verification criteria were checked",
-    source_of_truth_boundary: "source parser in bin/coding-agents.mjs owns structural field extraction",
+    source_of_truth_boundary: "source parser in bin/agentic-runner.mjs owns structural field extraction",
     plugin_contract_boundary: "plugin cache activation is outside scope; source CLI test covers runner validation",
-    generated_artifact_boundary: "generated runner.md packet is artifact under .coding-agents and fenced body is not structural",
+    generated_artifact_boundary: "generated runner.md packet is artifact under .agentic-runner and fenced body is not structural",
     before_context_effects: "before fix doctor could accept fake fenced fields and miss packet corruption",
     after_context_effects: "after fix doctor ignores fenced fields and reports missing structural evidence",
     cross_feature_consequences: "runner validation and normalize-debugging-integrity share structural packet parsing behavior",
     root_cause: "field parser scanned all runner.md text including fenced code blocks",
-    fix_summary: "bin/coding-agents.mjs now reads only structural bullet field blocks",
+    fix_summary: "bin/agentic-runner.mjs now reads only structural bullet field blocks",
     verification_evidence: "node --test tests/metacognitive-gate.test.mjs validates fenced fake fields are rejected",
     skipped_checks: "full plugin cache activation skipped because source CLI behavior is the target",
     unresolved_risks: "manual exotic Markdown field layouts remain outside generated format coverage",
@@ -1160,7 +1160,7 @@ function getRoleSection(text, role) {
 }
 
 function staleRunner(taskId) {
-  return `# Coding Agents Runner
+  return `# Agentic Runner Operations
 
 This file records stale pre-gate packets.
 
@@ -1173,7 +1173,7 @@ This file records stale pre-gate packets.
 - status: assigned
 - task_id: ${taskId}
 - epoch: e1
-- scope: bin/coding-agents.mjs
+- scope: bin/agentic-runner.mjs
 - assignment: repair source-of-truth contract drift
 - expected_output: implementation notes
 - debugging_integrity: debug work requires root cause and verification
@@ -1188,9 +1188,9 @@ This file records stale pre-gate packets.
 - status: completed
 - task_id: ${taskId}
 - epoch: e1
-- scope: bin/coding-agents.mjs
+- scope: bin/agentic-runner.mjs
 - findings: older worker claimed completion before metacognitive gate existed
-- changed_files: bin/coding-agents.mjs
+- changed_files: bin/agentic-runner.mjs
 - verification: not run
 - blockers: none
 - assumptions: none
@@ -1201,7 +1201,7 @@ This file records stale pre-gate packets.
 }
 
 function completionSynonymRunner(taskId, status) {
-  return `# Coding Agents Runner
+  return `# Agentic Runner Operations
 
 This file records a gate-required packet with a completion synonym.
 
@@ -1214,9 +1214,9 @@ This file records a gate-required packet with a completion synonym.
 - status: ${status}
 - task_id: ${taskId}
 - epoch: e1
-- scope: bin/coding-agents.mjs
+- scope: bin/agentic-runner.mjs
 - findings: older worker claimed completion with a synonym
-- changed_files: bin/coding-agents.mjs
+- changed_files: bin/agentic-runner.mjs
 - verification: not run
 - blockers: none
 - assumptions: none

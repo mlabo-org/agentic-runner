@@ -17,12 +17,12 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 
-const TOOL = "coding-agents legacy state migration";
+const TOOL = "agentic-runner legacy state migration";
 const LEGACY_RELS = ["docs/codex", "doc/codex"];
 const SKIP_DIR_NAMES = new Set([
   ".git",
-  ".coding-agents",
-  ".coding-agents-migration-backups",
+  ".agentic-runner",
+  ".agentic-runner-migration-backups",
   ".codex",
   "node_modules",
   "vendor",
@@ -154,14 +154,14 @@ function parseArgs(argv) {
 
 function printHelp() {
   process.stdout.write(`Usage:
-  node scripts/migrate-legacy-coding-agents-state.mjs [options]
+  node scripts/migrate-legacy-agentic-runner-state.mjs [options]
 
-Safe migration for legacy Coding Agents state directories.
+Safe migration for legacy Agentic Runner state directories.
 
 Default behavior:
   - dry-run only; no file or Git index changes
   - if no --repo, --root, --legacy, or --default-roots is provided, inspect the current Git repository only
-  - copy plans target <git-root>/.coding-agents/ and never delete legacy directories
+  - copy plans target <git-root>/.agentic-runner/ and never delete legacy directories
 
 Apply behavior:
   - requires --apply
@@ -280,7 +280,7 @@ function discoverRepoPlans(args, inputs, audit) {
       repoRoot: repo.root,
       discoveredBy: repo.discoveredBy,
       legacyDirs: legacyDirs.sort((a, b) => a.rel.localeCompare(b.rel)),
-      targetDir: path.join(repo.root, ".coding-agents"),
+      targetDir: path.join(repo.root, ".agentic-runner"),
       backupDir: "",
       excludePatterns: excludePatternsFor(legacyDirs),
       trackedLegacyFiles,
@@ -364,7 +364,7 @@ function trackedFilesForLegacy(repoRoot, legacyDirs) {
 }
 
 function excludePatternsFor(legacyDirs) {
-  const patterns = [".coding-agents/", ".coding-agents-migration-backups/"];
+  const patterns = [".agentic-runner/", ".agentic-runner-migration-backups/"];
   for (const legacyDir of legacyDirs) {
     patterns.push(`${slash(legacyDir.rel).replace(/\/+$/, "")}/`);
   }
@@ -373,7 +373,7 @@ function excludePatternsFor(legacyDirs) {
 
 function applyPlan(plan, runId) {
   try {
-    plan.backupDir = path.join(plan.repoRoot, ".coding-agents-migration-backups", runId);
+    plan.backupDir = path.join(plan.repoRoot, ".agentic-runner-migration-backups", runId);
     createPreflightBackup(plan);
     addExcludePatterns(plan);
     migrateLegacyDirs(plan, runId);
@@ -394,7 +394,7 @@ function createPreflightBackup(plan) {
   }
 
   if (existsSync(plan.targetDir)) {
-    copyTree(plan.targetDir, path.join(plan.backupDir, "existing-dot-coding-agents"), {
+    copyTree(plan.targetDir, path.join(plan.backupDir, "existing-dot-agentic-runner"), {
       onSkip: (message) => plan.warnings.push(`backup skip: ${message}`),
     });
   }
@@ -416,7 +416,7 @@ function createPreflightBackup(plan) {
         repoRoot: plan.repoRoot,
         backupDir: plan.backupDir,
         legacyDirs: plan.legacyDirs.map((dir) => dir.rel),
-        targetDir: ".coding-agents",
+        targetDir: ".agentic-runner",
         createdAt: new Date().toISOString(),
       },
       null,
@@ -443,7 +443,7 @@ function addExcludePatterns(plan) {
   }
 
   const prefix = original.endsWith("\n") || original.length === 0 ? "" : "\n";
-  const block = `${prefix}# coding-agents legacy state migration\n${additions.join("\n")}\n`;
+  const block = `${prefix}# agentic-runner legacy state migration\n${additions.join("\n")}\n`;
   writeTextFile(excludePath, original + block);
   plan.actions.push(`updated .git/info/exclude: ${additions.join(", ")}`);
 }
@@ -506,7 +506,7 @@ function copyLegacyContents(context) {
   }
 
   context.actions.push(
-    `copied ${context.label} -> .coding-agents/ (new=${copied}, identical=${identical}, conflicts-preserved=${conflicts}, skipped=${skipped})`,
+    `copied ${context.label} -> .agentic-runner/ (new=${copied}, identical=${identical}, conflicts-preserved=${conflicts}, skipped=${skipped})`,
   );
 }
 
@@ -539,7 +539,7 @@ function writeApplyReports(audit, report) {
 
 function renderAuditReport(audit) {
   const lines = [];
-  lines.push("# Coding Agents Legacy State Migration Audit");
+  lines.push("# Agentic Runner Legacy State Migration Audit");
   lines.push("");
   lines.push(`- mode: ${audit.mode}`);
   lines.push(`- started_at: ${audit.startedAt}`);
@@ -563,7 +563,7 @@ function renderAuditReport(audit) {
     for (const plan of audit.repositories) {
       lines.push(`### ${plan.repoRoot}`);
       lines.push(`- discovered_by: ${plan.discoveredBy.join(", ")}`);
-      lines.push(`- target: ${slash(path.relative(plan.repoRoot, plan.targetDir)) || ".coding-agents"}`);
+      lines.push(`- target: ${slash(path.relative(plan.repoRoot, plan.targetDir)) || ".agentic-runner"}`);
       if (plan.backupDir) lines.push(`- backup: ${slash(path.relative(plan.repoRoot, plan.backupDir))}`);
       lines.push(`- legacy_dirs: ${plan.legacyDirs.map((dir) => dir.rel).join(", ")}`);
       lines.push(`- tracked_legacy_files: ${plan.trackedLegacyFiles.length}`);
@@ -601,7 +601,7 @@ function renderAuditReport(audit) {
 function plannedActions(plan) {
   const actions = [];
   actions.push("would create preflight backup before apply");
-  actions.push(`would copy legacy contents to .coding-agents/ without overwriting divergent files`);
+  actions.push(`would copy legacy contents to .agentic-runner/ without overwriting divergent files`);
   actions.push(`would update .git/info/exclude: ${plan.excludePatterns.join(", ")}`);
   if (plan.trackedLegacyFiles.length > 0) {
     actions.push(`would untrack ${plan.trackedLegacyFiles.length} legacy tracked file(s) with git rm --cached -f`);

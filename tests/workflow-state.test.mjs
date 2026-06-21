@@ -7,7 +7,32 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const CLI = path.join(REPO_ROOT, "bin", "coding-agents.mjs");
+const CLI = path.join(REPO_ROOT, "bin", "agentic-runner.mjs");
+
+test("source identity contains no legacy runner brand strings", () => {
+  const forbidden = [
+    ["cod", "ing", "-agents"].join(""),
+    ["Cod", "ing ", "Agents"].join(""),
+    ["cod", "ing ", "agents"].join(""),
+    [".", "cod", "ing", "-agents"].join(""),
+    ["cod", "ing", "_agents"].join(""),
+    ["COD", "ING", "_AGENTS"].join(""),
+    ["cod", "ing", "-agent"].join(""),
+    ["Cod", "ing ", "Agent"].join(""),
+  ];
+  const listed = spawnSync("git", ["ls-files"], { cwd: REPO_ROOT, encoding: "utf8" });
+  assert.equal(listed.status, 0, listed.stderr);
+
+  const hits = [];
+  for (const file of listed.stdout.trim().split("\n").filter(Boolean)) {
+    const text = readFileSync(path.join(REPO_ROOT, file), "utf8");
+    for (const token of forbidden) {
+      if (text.includes(token)) hits.push(`${file}: ${token}`);
+    }
+  }
+
+  assert.deepEqual(hits, []);
+});
 
 test("runner commands require matching intake state before writing runner state", () => {
   const repo = makeTempGitRepo();
@@ -31,7 +56,7 @@ test("runner commands require matching intake state before writing runner state"
     ]);
     assert.notEqual(beforeIntake.status, 0);
     assert.match(beforeIntake.stderr, /requires current intake state/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     intake(repo, { taskId: "state-safety", epoch: "e1", scope: "README.md" });
 
@@ -54,7 +79,7 @@ test("runner commands require matching intake state before writing runner state"
     ]);
     assert.notEqual(wrongTask.status, 0);
     assert.match(wrongTask.stderr, /does not match current task state-safety/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     const assigned = runCli([
       "assign",
@@ -125,7 +150,7 @@ test("identity isolation fields reject CR/LF injection before state writes", () 
       assert.match(rejected.stderr, /CR\/LF are not allowed/);
     }
 
-    assert.equal(existsSync(path.join(repo, ".coding-agents")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner")), false);
 
     intake(repo, { taskId: "identity-current", epoch: "e1", scope: "README.md" });
     const commands = [
@@ -190,7 +215,7 @@ test("identity isolation fields reject CR/LF injection before state writes", () 
       assert.notEqual(rejected.status, 0, `${args[0]} unexpectedly passed`);
       assert.match(rejected.stderr, /CR\/LF are not allowed/);
     }
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -200,7 +225,7 @@ test("validation rejects corrupted workflow state with injected identity fields"
   const repo = makeTempGitRepo();
   try {
     intake(repo, { taskId: "identity-state", epoch: "e1", scope: "README.md" });
-    const taskPath = path.join(repo, ".coding-agents", "task.md");
+    const taskPath = path.join(repo, ".agentic-runner", "task.md");
     const task = readFileSync(taskPath, "utf8");
     writeFileSync(taskPath, task.replace("- task_id: identity-state", "- task_id: identity-state\n- task_id: injected"), "utf8");
 
@@ -235,7 +260,7 @@ test("validation rejects corrupted workflow state with injected identity fields"
     ]);
     assert.notEqual(assign.status, 0);
     assert.match(assign.stderr, /task_id duplicated/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -278,7 +303,7 @@ test("assignment validation does not accept fenced fake identity fields", () => 
   const repo = makeTempGitRepo();
   try {
     intake(repo, { taskId: "assignment-fence", epoch: "e1", scope: "README.md" });
-    const assignmentsPath = path.join(repo, ".coding-agents", "assignments.md");
+    const assignmentsPath = path.join(repo, ".agentic-runner", "assignments.md");
     const assignments = readFileSync(assignmentsPath, "utf8");
     const corrupted = assignments.replace(
       /(## Implementer[\s\S]*?)- task_id: assignment-fence\n/,
@@ -300,18 +325,18 @@ test("doctor verifies the target git info exclude without mutating it", () => {
     intake(repo, { taskId: "exclude-check", epoch: "e1", scope: "README.md" });
     const excludePath = path.join(repo, ".git", "info", "exclude");
     const originalExclude = readFileSync(excludePath, "utf8");
-    assert.match(originalExclude, /^\.coding-agents\/$/m);
+    assert.match(originalExclude, /^\.agentic-runner\/$/m);
 
-    writeFileSync(excludePath, originalExclude.replace(/^\.coding-agents\/\n?/m, ""), "utf8");
+    writeFileSync(excludePath, originalExclude.replace(/^\.agentic-runner\/\n?/m, ""), "utf8");
     const missing = runCli(["doctor", "--target-cwd", repo]);
     assert.notEqual(missing.status, 0);
-    assert.match(missing.stdout, /missing \.coding-agents\/ in/);
-    assert.doesNotMatch(readFileSync(excludePath, "utf8"), /^\.coding-agents\/$/m);
+    assert.match(missing.stdout, /missing \.agentic-runner\/ in/);
+    assert.doesNotMatch(readFileSync(excludePath, "utf8"), /^\.agentic-runner\/$/m);
 
     writeFileSync(excludePath, originalExclude, "utf8");
     const restored = runCli(["doctor", "--target-cwd", repo]);
     assert.equal(restored.status, 0, restored.stdout + restored.stderr);
-    assert.match(restored.stdout, /ok \.coding-agents\/ ignored by git info exclude/);
+    assert.match(restored.stdout, /ok \.agentic-runner\/ ignored by git info exclude/);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -618,7 +643,7 @@ test("valid feature profile renders in assignment, collect, and run skeleton pac
 
 test("codex-cli runner prompt and result carry the feature profile overlay", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     intake(repo, { taskId: "profile-runner", epoch: "e1", scope: "README.md" });
     const fakeCodex = path.join(fakeBin, "codex");
@@ -752,7 +777,7 @@ test("unknown feature profiles fail before runner state is appended", () => {
       assert.notEqual(rejected.status, 0, `${args[0]} unexpectedly passed`);
       assert.match(rejected.stderr, /unknown feature profile: debug\.unknown/);
       assert.match(rejected.stderr, /debug\.reproducer/);
-      assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+      assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
     }
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -829,7 +854,7 @@ test("unknown work types fail before runner state is appended", () => {
       assert.notEqual(rejected.status, 0, `${args[0]} unexpectedly passed`);
       assert.match(rejected.stderr, /unknown work type: mystery/);
       assert.match(rejected.stderr, /auto, documentation, source-change, debug/);
-      assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+      assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
     }
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -899,7 +924,7 @@ test("legacy runner packets without work_type remain explicitly backwards compat
     const legacy = legacyRunnerWithoutWorkType("work-type-legacy");
     assert.doesNotMatch(legacy, /work_type:/);
     assert.doesNotMatch(legacy, /hierarchy_mode|heartbeat_interval|cancel_reason_required/);
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), legacy, "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), legacy, "utf8");
 
     const verify = runCli(["verify-assignments", "--target-cwd", repo]);
     assert.equal(verify.status, 0, verify.stdout + verify.stderr);
@@ -914,7 +939,7 @@ test("validation rejects assignments missing hierarchy fields", () => {
   const repo = makeTempGitRepo();
   try {
     intake(repo, { taskId: "hierarchy-missing", epoch: "e1", scope: "README.md" });
-    const assignmentsPath = path.join(repo, ".coding-agents", "assignments.md");
+    const assignmentsPath = path.join(repo, ".agentic-runner", "assignments.md");
     writeFileSync(assignmentsPath, stripHierarchyLines(readFileSync(assignmentsPath, "utf8")), "utf8");
 
     const verify = runCli(["verify-assignments", "--target-cwd", repo]);
@@ -935,7 +960,7 @@ test("validation rejects modern runner packets missing supervision contract", ()
   try {
     intake(repo, { taskId: "supervision-missing", epoch: "e1", scope: "README.md" });
     writeFileSync(
-      path.join(repo, ".coding-agents", "runner.md"),
+      path.join(repo, ".agentic-runner", "runner.md"),
       stripSupervisionLines(modernRunnerPacket("supervision-missing")),
       "utf8",
     );
@@ -958,7 +983,7 @@ test("validation rejects modern runner packets missing machine timing fields", (
   try {
     intake(repo, { taskId: "timing-missing", epoch: "e1", scope: "README.md" });
     writeFileSync(
-      path.join(repo, ".coding-agents", "runner.md"),
+      path.join(repo, ".agentic-runner", "runner.md"),
       stripTimingLines(modernRunnerPacket("timing-missing")),
       "utf8",
     );
@@ -999,8 +1024,8 @@ test("normalize adds missing hierarchy and machine supervision fields to stale g
     ]);
     assert.equal(assigned.status, 0, assigned.stderr);
 
-    const assignmentsPath = path.join(repo, ".coding-agents", "assignments.md");
-    const runnerPath = path.join(repo, ".coding-agents", "runner.md");
+    const assignmentsPath = path.join(repo, ".agentic-runner", "assignments.md");
+    const runnerPath = path.join(repo, ".agentic-runner", "runner.md");
     writeFileSync(assignmentsPath, stripTimingLines(stripHierarchyLines(readFileSync(assignmentsPath, "utf8"))), "utf8");
     writeFileSync(runnerPath, stripTimingLines(stripHierarchyLines(readFileSync(runnerPath, "utf8"))), "utf8");
 
@@ -1025,7 +1050,7 @@ test("doctor does not treat trailing legacy runner packet identity as modern dup
   const repo = makeTempGitRepo();
   try {
     intake(repo, { taskId: "legacy-boundary", epoch: "e1", scope: "README.md" });
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), modernPacketFollowedByLegacyRunnerPacket("legacy-boundary"), "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), modernPacketFollowedByLegacyRunnerPacket("legacy-boundary"), "utf8");
 
     const doctor = runCli(["doctor", "--target-cwd", repo]);
     assert.equal(doctor.status, 0, doctor.stdout + doctor.stderr);
@@ -1041,7 +1066,7 @@ test("doctor still reports duplicate identity fields inside a modern runner pack
     intake(repo, { taskId: "runner-duplicate", epoch: "e1", scope: "README.md" });
     const runner = modernRunnerPacket("runner-duplicate")
       .replace("- task_id: runner-duplicate", "- task_id: runner-duplicate\n- task_id: duplicate");
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), runner, "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), runner, "utf8");
 
     const doctor = runCli(["doctor", "--target-cwd", repo]);
     assert.notEqual(doctor.status, 0);
@@ -1062,7 +1087,7 @@ test("runner validation ignores fenced field-looking bullets inside modern packe
 - scope: fake-runner-scope
 \`\`\`
 `;
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), runner, "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), runner, "utf8");
 
     const doctor = runCli(["doctor", "--target-cwd", repo]);
     assert.equal(doctor.status, 0, doctor.stdout + doctor.stderr);
@@ -1081,7 +1106,7 @@ test("runner validation does not accept fenced fake identity for missing structu
 - task_id: runner-missing-fence
 \`\`\`
 `;
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), runner, "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), runner, "utf8");
 
     const doctor = runCli(["doctor", "--target-cwd", repo]);
     assert.notEqual(doctor.status, 0);
@@ -1097,7 +1122,7 @@ test("normalize runner debugging integrity stops modern packets before legacy ru
     intake(repo, { taskId: "normalize-legacy-boundary", epoch: "e1", scope: "README.md" });
     const runner = modernPacketFollowedByLegacyRunnerPacket("normalize-legacy-boundary")
       .replace("- debugging_integrity: debug work requires root cause and verification\n", "");
-    writeFileSync(path.join(repo, ".coding-agents", "runner.md"), runner, "utf8");
+    writeFileSync(path.join(repo, ".agentic-runner", "runner.md"), runner, "utf8");
 
     const normalized = runCli(["normalize-debugging-integrity", "--target-cwd", repo, "--execute"]);
     assert.equal(normalized.status, 0, normalized.stderr);
@@ -1120,7 +1145,7 @@ test("normalize runner metacognitive gate does not accept packet fields as pream
     intake(repo, {
       taskId: "normalize-runner-preamble",
       epoch: "e1",
-      scope: "bin/coding-agents.mjs",
+      scope: "bin/agentic-runner.mjs",
       workType: "source-change",
     });
     const assigned = runCli([
@@ -1134,7 +1159,7 @@ test("normalize runner metacognitive gate does not accept packet fields as pream
       "--epoch",
       "e1",
       "--scope",
-      "bin/coding-agents.mjs",
+      "bin/agentic-runner.mjs",
       "--work-type",
       "source-change",
       "--assignment",
@@ -1161,7 +1186,7 @@ test("normalize runner metacognitive gate does not accept packet fields as pream
 
 test("codex-cli runner fails when it writes outside the machine-checkable scope", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     intake(repo, { taskId: "runner-scope", epoch: "e1", scope: "allowed.txt" });
     const fakeCodex = path.join(fakeBin, "codex");
@@ -1211,7 +1236,7 @@ process.stdout.write("fake codex completed\\n");
 
 test("codex-cli runner refuses pre-existing dirty paths outside scope before appending or launching", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     intake(repo, { taskId: "runner-predirty", epoch: "e1", scope: "allowed.txt" });
     writeFileSync(path.join(repo, "outside.txt"), "already dirty\n", "utf8");
@@ -1251,7 +1276,7 @@ process.stdout.write("fake codex completed\\n");
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /dirty files outside scope allowed\.txt: outside\.txt/);
     assert.equal(existsSync(path.join(repo, "launched.txt")), false);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(fakeBin, { recursive: true, force: true });
@@ -1260,7 +1285,7 @@ process.stdout.write("fake codex completed\\n");
 
 test("codex-cli runner rejects negative prose scope without blocking intake", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     const scope = "allowed.txt except outside.txt";
     intake(repo, { taskId: "runner-negative-scope", epoch: "e1", scope });
@@ -1300,7 +1325,7 @@ process.stdout.write("fake codex completed\\n");
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /negative or exclusion wording is not supported/);
     assert.equal(existsSync(path.join(repo, "launched.txt")), false);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     const assign = runCli([
       "assign",
@@ -1329,9 +1354,9 @@ process.stdout.write("fake codex completed\\n");
 
 test("codex-cli runner accepts explicit scope:v1 paths grammar", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
-    const scope = `scope:v1 paths=README.md,${path.join(repo, "bin/coding-agents.mjs")},tests/`;
+    const scope = `scope:v1 paths=README.md,${path.join(repo, "bin/agentic-runner.mjs")},tests/`;
     intake(repo, { taskId: "runner-v1-paths", epoch: "e1", scope, workType: "documentation" });
     installFakeCodex(fakeBin, "fake codex completed\\n");
 
@@ -1370,7 +1395,7 @@ test("codex-cli runner accepts explicit scope:v1 paths grammar", () => {
 
 test("codex-cli runner accepts explicit scope:v1 all grammar as whole repo", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     const scope = "scope:v1 all";
     intake(repo, { taskId: "runner-v1-all", epoch: "e1", scope });
@@ -1408,7 +1433,7 @@ test("codex-cli runner accepts explicit scope:v1 all grammar as whole repo", () 
 
 test("codex-cli runner rejects glob scope before appending or launching", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     const scope = "scope:v1 paths=*.md";
     intake(repo, { taskId: "runner-glob-reject", epoch: "e1", scope });
@@ -1439,7 +1464,7 @@ test("codex-cli runner rejects glob scope before appending or launching", () => 
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /globs, wildcards, or list punctuation are not supported/);
     assert.equal(existsSync(path.join(repo, "launched.txt")), false);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(fakeBin, { recursive: true, force: true });
@@ -1448,12 +1473,12 @@ test("codex-cli runner rejects glob scope before appending or launching", () => 
 
 test("codex-cli runner rejects outside absolute and dot-dot scope before launch", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     installFakeCodex(fakeBin, "fake codex completed\\n", 'writeFileSync("launched.txt", "runner launched\\n", "utf8");');
 
     for (const [taskId, scope, expected] of [
-      ["runner-absolute-reject", `scope:v1 paths=${path.join(os.tmpdir(), "outside-coding-agents.txt")}`, /absolute paths must resolve inside target cwd/],
+      ["runner-absolute-reject", `scope:v1 paths=${path.join(os.tmpdir(), "outside-agentic-runner.txt")}`, /absolute paths must resolve inside target cwd/],
       ["runner-dotdot-reject", "scope:v1 paths=../outside.txt", /\.\. escapes are not supported/],
     ]) {
       intake(repo, { taskId, epoch: "e1", scope, workType: "documentation" });
@@ -1482,7 +1507,7 @@ test("codex-cli runner rejects outside absolute and dot-dot scope before launch"
       assert.notEqual(run.status, 0, `${scope} unexpectedly passed`);
       assert.match(run.stderr, expected);
       assert.equal(existsSync(path.join(repo, "launched.txt")), false);
-      assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+      assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
     }
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -1492,14 +1517,14 @@ test("codex-cli runner rejects outside absolute and dot-dot scope before launch"
 
 test("codex-cli runner preserves legacy simple path-only scopes", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     installFakeCodex(fakeBin, "fake codex completed\\n");
 
     for (const [index, scope] of [
       "README.md",
       "allowed/",
-      "bin/coding-agents.mjs tests/workflow-state.test.mjs",
+      "bin/agentic-runner.mjs tests/workflow-state.test.mjs",
       ".",
       "repo",
       "whole repo",
@@ -1541,7 +1566,7 @@ test("codex-cli runner preserves legacy simple path-only scopes", () => {
 
 test("codex-cli runner rejects ambiguous legacy prose before appending or launching", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     const scope = "please edit README.md";
     intake(repo, { taskId: "runner-prose-reject", epoch: "e1", scope });
@@ -1572,7 +1597,7 @@ test("codex-cli runner rejects ambiguous legacy prose before appending or launch
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /requires a machine-checkable path-only scope/);
     assert.equal(existsSync(path.join(repo, "launched.txt")), false);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(fakeBin, { recursive: true, force: true });
@@ -1581,7 +1606,7 @@ test("codex-cli runner rejects ambiguous legacy prose before appending or launch
 
 test("codex-cli runner rejects legacy list punctuation before appending or launching", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     const scope = "README.md;tests/";
     intake(repo, { taskId: "runner-legacy-punctuation-reject", epoch: "e1", scope });
@@ -1612,7 +1637,7 @@ test("codex-cli runner rejects legacy list punctuation before appending or launc
     assert.notEqual(run.status, 0);
     assert.match(run.stderr, /requires a machine-checkable path-only scope/);
     assert.equal(existsSync(path.join(repo, "launched.txt")), false);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(fakeBin, { recursive: true, force: true });
@@ -1621,7 +1646,7 @@ test("codex-cli runner rejects legacy list punctuation before appending or launc
 
 test("codex-cli runner scope guard treats git rename source and destination as changed paths", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     commitFile(repo, "outside.txt", "tracked outside\n");
     intake(repo, { taskId: "runner-rename", epoch: "e1", scope: "allowed/" });
@@ -1673,7 +1698,7 @@ process.stdout.write("fake codex renamed\\n");
 
 test("codex-cli runner scope guard handles rename paths with spaces", () => {
   const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "coding-agents-fake-codex-"));
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
   try {
     commitFile(repo, "outside old name.txt", "tracked outside\n");
     intake(repo, { taskId: "runner-rename-spaces", epoch: "e1", scope: "allowed/" });
@@ -1745,7 +1770,7 @@ test("codex-cli runner validates runner name and timeout before appending assign
     ]);
     assert.notEqual(badRunner.status, 0);
     assert.match(badRunner.stderr, /unknown runner: bad-runner/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
 
     const badTimeout = runCli([
       "run",
@@ -1770,7 +1795,7 @@ test("codex-cli runner validates runner name and timeout before appending assign
     ]);
     assert.notEqual(badTimeout.status, 0);
     assert.match(badTimeout.stderr, /invalid --timeout-ms: expected positive integer/);
-    assert.equal(existsSync(path.join(repo, ".coding-agents", "runner.md")), false);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -1796,7 +1821,7 @@ function intake(repo, options) {
 }
 
 function makeTempGitRepo() {
-  const repo = mkdtempSync(path.join(os.tmpdir(), "coding-agents-workflow-"));
+  const repo = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-workflow-"));
   const init = spawnSync("git", ["init"], { cwd: repo, encoding: "utf8" });
   assert.equal(init.status, 0, init.stderr);
   return repo;
@@ -1804,8 +1829,8 @@ function makeTempGitRepo() {
 
 function commitFile(repo, file, contents) {
   writeFileSync(path.join(repo, file), contents, "utf8");
-  assert.equal(spawnSync("git", ["config", "user.email", "coding-agents-test@example.com"], { cwd: repo, encoding: "utf8" }).status, 0);
-  assert.equal(spawnSync("git", ["config", "user.name", "Coding Agents Test"], { cwd: repo, encoding: "utf8" }).status, 0);
+  assert.equal(spawnSync("git", ["config", "user.email", "agentic-runner-test@example.com"], { cwd: repo, encoding: "utf8" }).status, 0);
+  assert.equal(spawnSync("git", ["config", "user.name", "Agentic Runner Test"], { cwd: repo, encoding: "utf8" }).status, 0);
   assert.equal(spawnSync("git", ["add", file], { cwd: repo, encoding: "utf8" }).status, 0);
   const commit = spawnSync("git", ["commit", "-m", `track ${file}`], { cwd: repo, encoding: "utf8" });
   assert.equal(commit.status, 0, commit.stderr);
@@ -1841,11 +1866,11 @@ function runCli(args, options = {}) {
 }
 
 function readState(repo, file) {
-  return readFileSync(path.join(repo, ".coding-agents", file), "utf8");
+  return readFileSync(path.join(repo, ".agentic-runner", file), "utf8");
 }
 
 function legacyRunnerWithoutWorkType(taskId) {
-  return `# Coding Agents Runner
+  return `# Agentic Runner Operations
 
 This file records legacy packets without work_type.
 
@@ -1864,7 +1889,7 @@ This file records legacy packets without work_type.
 - target_cwd: /tmp/legacy
 - assignment: make a scoped documentation change
 - expected_output: assignment packet
-- nested_coding_agents_preflight: parent already selected Coding Agents
+- nested_agentic_runner_preflight: parent already selected Agentic Runner
 - debugging_integrity: debug work requires root cause and verification
 - lifecycle: return concise parent-integration material, then stop
 
@@ -1893,7 +1918,7 @@ This file records legacy packets without work_type.
 }
 
 function modernRunnerPacket(taskId) {
-  return `# Coding Agents Runner
+  return `# Agentic Runner Operations
 
 ## Issued Assignments
 
@@ -1911,7 +1936,7 @@ function modernRunnerPacket(taskId) {
 - target_cwd: /tmp/modern
 - assignment: make a scoped documentation change
 - expected_output: assignment packet
-- nested_coding_agents_preflight: parent already selected Coding Agents
+- nested_agentic_runner_preflight: parent already selected Agentic Runner
 - debugging_integrity: debug work requires root cause and verification
 ${supervisionFieldLines()}
 - lifecycle: return concise parent-integration material, then stop
