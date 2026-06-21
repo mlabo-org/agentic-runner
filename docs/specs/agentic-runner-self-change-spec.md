@@ -6,7 +6,35 @@ behavior. It is not workflow state and must not be treated as a generated
 
 ## Confirmed Boundary
 
-Items 1-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
+Items 0-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
+
+0. Operating modes and self-host gate
+   - Agentic Runner operates in external-supervised mode by default.
+   - External-supervised mode means a parent Codex session or another explicit
+     external supervisor owns policy decisions, source edits, verification
+     acceptance, commits, cache refresh, and activation.
+   - Self-host mode means Agentic Runner may orchestrate edits to
+     `/Users/suzukimakoto/plugins/agentic-runner` using its own
+     `.agentic-runner/` workflow state, assignments, runner prompts, or scoped
+     subagent handoff material.
+   - Self-host mode is allowed only when the user explicitly requests or
+     approves Agentic Runner self-hosting for the Agentic Runner source
+     repository, the resolved jobsite Git root is the Agentic Runner source
+     repository, the invocation uses explicit `--target-cwd` for that source
+     repository, the active scope is machine-checkable and limited to named
+     source paths, `work_type` is `source-change` or `debug`, the
+     metacognitive gate is required and recorded, and an external supervisor
+     reviews the plan and accepts verification.
+   - Documentation mode cannot authorize self-hosted source edits.
+   - Self-host permission does not include cache refresh, marketplace
+     registration, plugin activation, commits, destructive actions, external
+     sending, or scope expansion. Those remain separate explicit approvals.
+   - If any condition is missing, stay in external-supervised mode and stop
+     before self-hosted state writes or source edits.
+   - The source CLI enforces the mechanical gate: when the target Git root is
+     the Agentic Runner source repository, state-writing commands require
+     explicit `--target-cwd` and record `self_host_target` plus
+     `self_host_gate` in generated project and audit state.
 
 1. State directory
    - Agentic Runner runtime/workflow state belongs under `<git-root>/.agentic-runner/`.
@@ -101,6 +129,8 @@ Items 1-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
      generated-artifact inconsistency investigation, generated state versus
      source mismatch, cache/runtime versus source mismatch, and stale contract
      repair are context-impact work, not only local patch work.
+   - Self-hosted Agentic Runner source edits are always gate-required
+     context-impact work and must not be downgraded by `documentation` mode.
    - Assignments, audits, handoffs, runner packets, and final reports for this
      gate must separate the intended contract, observed mismatch, affected
      source/generated/cache/runtime surfaces, changed assumptions, neighboring
@@ -147,6 +177,8 @@ Items 1-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
 ## Cache Refresh Timing
 
 - Refreshing the plugin cache is separate from source editing.
+- Self-host permission does not authorize cache refresh, marketplace
+  registration, plugin activation, commits, or restart/reload.
 - Cache refresh must be cautious and happen only after source validation.
 - When the source change is intended for publication, commit the validated source
   change before refreshing cache.
@@ -157,7 +189,9 @@ Items 1-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
 
 Future implementation work should preserve this split:
 
-- Source self-change work may update the Agentic Runner source repository.
+- Source self-change work may update the Agentic Runner source repository only
+  under external supervision by default, or under self-host mode after the
+  Self-Host Gate is explicitly satisfied.
 - Cross-repo source invocation must keep source/cache files separate from the
   target repository's generated `.agentic-runner/` state. Running the source CLI
   from the plugin repository does not make the plugin repository the state owner

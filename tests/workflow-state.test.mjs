@@ -34,6 +34,63 @@ test("source identity contains no legacy runner brand strings", () => {
   assert.deepEqual(hits, []);
 });
 
+test("doctor reports explicit self-host gate for the Agentic Runner source repo", () => {
+  const result = runCli(["doctor", "--target-cwd", "."]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /ok self-host gate: explicit_self_host_target/);
+});
+
+test("intake refuses implicit self-host writes to the Agentic Runner source repo", () => {
+  const result = runCli([
+    "intake",
+    "--task",
+    "attempt implicit self-host intake",
+    "--task-id",
+    "implicit-self-host",
+    "--epoch",
+    "e1",
+    "--scope",
+    "scope:v1 paths=bin/agentic-runner.mjs",
+    "--work-type",
+    "source-change",
+  ]);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Self-Host Gate: refusing intake/);
+  assert.match(result.stderr, /--target-cwd/);
+});
+
+test("cross-repo intake records non-self-host gate state", () => {
+  const repo = makeTempGitRepo();
+  try {
+    const result = runCli([
+      "intake",
+      "--target-cwd",
+      repo,
+      "--task",
+      "plan external target work",
+      "--task-id",
+      "external-target",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--work-type",
+      "source-change",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /ok self_host_target: false/);
+    assert.match(result.stdout, /ok self_host_gate: external_supervised_non_self_target/);
+    assert.match(readState(repo, "project.md"), /self_host_target: false/);
+    assert.match(readState(repo, "project.md"), /self_host_gate: external_supervised_non_self_target/);
+    assert.match(readState(repo, "audit.md"), /self_host_target: false/);
+    assert.match(readState(repo, "audit.md"), /self_host_gate: external_supervised_non_self_target/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("runner commands require matching intake state before writing runner state", () => {
   const repo = makeTempGitRepo();
   try {

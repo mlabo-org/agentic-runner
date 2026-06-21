@@ -1,6 +1,6 @@
 ---
 name: agentic-runner
-description: Use when the user wants the Agentic Runner workflow or source CLI to intake a jobsite/target cwd, maintain the target git root's <git-root>/.agentic-runner/ workflow state even when invoked cross-repo, assign/collect/run scoped specialist work with task_id/epoch/scope/lifecycle isolation, finite delegation depth, long-running subagent supervision, optional feature-profile assignment overlays, and semantic --work-type metadata, enforce prompt subagent close/retire handling without premature interruption of quiet workers, enforce debugging root-cause integrity and the metacognitive source-change/debug/repair gate for source-change, debug, repair, source-of-truth, plugin-contract, generated-artifact inconsistency, before/after context, or cross-feature consequences work, print a handoff prompt, audit workflow state, or migrate legacy docs/codex material. Trigger for explicit requests to initialize, plan, execute, coordinate, or audit agentic source work with the agentic-runner plugin or source MVP. Do not use for generic one-off edits, and do not treat docs/codex as current workflow state.
+description: Use when the user wants the Agentic Runner workflow or source CLI to intake a jobsite/target cwd, maintain the target git root's <git-root>/.agentic-runner/ workflow state even when invoked cross-repo, assign/collect/run scoped specialist work with task_id/epoch/scope/lifecycle isolation, finite delegation depth, long-running subagent supervision, optional feature-profile assignment overlays, semantic --work-type metadata, and an explicit self-host gate for Agentic Runner source edits, enforce prompt subagent close/retire handling without premature interruption of quiet workers, enforce debugging root-cause integrity and the metacognitive source-change/debug/repair gate for source-change, debug, repair, source-of-truth, plugin-contract, generated-artifact inconsistency, before/after context, or cross-feature consequences work, print a handoff prompt, audit workflow state, or migrate legacy docs/codex material. Trigger for explicit requests to initialize, plan, execute, coordinate, or audit agentic source work with the agentic-runner plugin or source MVP. Do not use for generic one-off edits, and do not treat docs/codex as current workflow state.
 ---
 
 # Agentic Runner
@@ -15,6 +15,7 @@ Codex は、本書の発火前提、作業手順、ツール境界、ファイ�
 - Do not trigger this skill for ordinary one-off edits, reviews, or explanations unless the user connects the work to Agentic Runner.
 - Do not trigger this skill merely because a repository contains `docs/codex`. Legacy `docs/codex` is a migration source, not proof that the current workflow is active.
 - Do not perform legacy migration apply, plugin cache refresh, marketplace updates, or restart/reload actions unless the active user request includes that boundary.
+- Do not treat an explicit request to use Agentic Runner as permission for Agentic Runner to self-host edits to its own source repository. Self-host mode requires the Self-Host Gate below.
 
 ## Core Contract
 
@@ -34,6 +35,23 @@ Codex は、本書の発火前提、作業手順、ツール境界、ファイ�
 - The parent agent owns task decomposition, policy decisions, user consultation, conflict resolution, final integration, explicit subagent close/retire handling, and final reporting.
 - Subagents own research, implementation material, verification material, and isolated findings. They do not own final policy or final user-facing synthesis.
 - After a subagent result is integrated, after hard-timeout/failure/blocker handling, after a stale premise or scope change, and before the final report when no further use is expected, the parent must close or retire each no-longer-needed subagent promptly under the supervision and cancellation rules.
+
+## Self-Host Gate
+
+- Agentic Runner operates in external-supervised mode by default.
+- External-supervised mode means a parent Codex session or another explicit external supervisor owns policy decisions, source edits, verification acceptance, commits, cache refresh, and activation. Agentic Runner may perform intake, audit, handoff generation, source CLI checks, and scoped assignment planning, but it must not use its own runner/subagent workflow to modify `/Users/suzukimakoto/plugins/agentic-runner` unless self-host mode has been explicitly opened.
+- Self-host mode means Agentic Runner may orchestrate edits to `/Users/suzukimakoto/plugins/agentic-runner` using its own `.agentic-runner/` workflow state, assignments, runner prompts, or scoped subagent handoff material.
+- Self-host mode is allowed only when all conditions are met:
+  - The user explicitly requests Agentic Runner self-hosting for the Agentic Runner source repository, or explicitly approves self-hosting after the external-supervised versus self-host distinction is shown.
+  - The resolved jobsite Git root is `/Users/suzukimakoto/plugins/agentic-runner`.
+  - The CLI invocation uses explicit `--target-cwd /Users/suzukimakoto/plugins/agentic-runner` or an equivalent explicit target path that resolves to the same Git root.
+  - The active scope is machine-checkable and limited to named source paths.
+  - `work_type` is `source-change` or `debug`; `documentation` mode cannot authorize self-hosted source edits.
+  - The metacognitive source-change/debug gate is recorded and required.
+  - Source/cache/runtime boundaries, cache refresh, activation, commits, destructive actions, external sending, and scope expansion remain separate explicit approvals.
+  - An external supervisor reviews the plan and accepts verification before the work is treated as complete.
+- If any condition is missing, stay in external-supervised mode and stop before self-hosted state writes or source edits.
+- The source CLI enforces the narrow mechanical part of this gate: when the target Git root is the Agentic Runner source repository, state-writing commands require explicit `--target-cwd` and record `self_host_target` plus `self_host_gate` in generated project and audit state.
 
 ## Debugging Integrity Gate
 
@@ -113,7 +131,7 @@ Codex は、本書の発火前提、作業手順、ツール境界、ファイ�
 
 ## Source CLI MVP Workflow
 
-Use the source CLI when the user wants to test source-tree behavior before plugin cache activation, or when the active task is a source upgrade of the Agentic Runner plugin itself.
+Use the source CLI when the user wants to test source-tree behavior before plugin cache activation, or when the active task is a source upgrade of the Agentic Runner plugin itself. Source CLI validation is allowed in external-supervised mode; self-hosted `run` or `orchestrate` against the Agentic Runner source repository requires the Self-Host Gate.
 
 1. Record `invocation_cwd` as the launch directory.
 2. Resolve the target jobsite path. Use `--target-cwd <jobsite>` for explicit cross-repo target selection; if no target is provided, use `invocation_cwd` as the jobsite.
@@ -165,6 +183,7 @@ If source CLI output still names legacy `docs/codex`, treat that as source imple
 - Edit jobsite files only inside the active task scope.
 - In cross-repo invocation, do not edit the invocation repository merely because Codex or the source CLI was launched there. Edit the invocation repository only when it is also the resolved jobsite or is explicitly inside the active task scope.
 - Treat plugin source directories as source of truth. Do not patch `~/.codex/plugins/cache/` as the primary edit target.
+- Treat `/Users/suzukimakoto/plugins/agentic-runner` as a special source repository: it is editable only when it is the explicit target, and it remains external-supervised by default unless the Self-Host Gate is satisfied.
 - Do not edit `~/.codex/plugins/cache/`, marketplace files, or plugin activation state unless the user explicitly includes that in the active task scope.
 - Do not auto-edit tracked `.gitignore` to hide `.agentic-runner/`. Use target `.git/info/exclude` for the local workflow-state ignore rule.
 - Do not edit legacy `docs/codex` as active workflow state. Edit it only when the active task is an explicit migration, cleanup, or legacy-document maintenance task.
@@ -176,6 +195,7 @@ If source CLI output still names legacy `docs/codex`, treat that as source imple
 - Source repository changes take effect for direct source CLI runs immediately.
 - Installed plugin behavior uses the cached plugin copy under `~/.codex/plugins/cache/` and may require a refresh plus Codex restart or a new thread before the updated skill, agent metadata, CLI, or assets are active.
 - Refresh cache only from validated source and only for the named plugin in scope. Do not refresh broadly or edit cache files directly.
+- Self-host permission does not include cache refresh, marketplace registration, plugin activation, commits, or restart/reload. Those remain separate explicit user-confirmed boundaries.
 - When cache activation is out of scope, report that source is updated but plugin activation is pending cache refresh/restart.
 
 ## Output Shape
