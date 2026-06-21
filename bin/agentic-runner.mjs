@@ -104,6 +104,19 @@ const FEATURE_PROFILE_GUIDANCE = {
     "Overlay for this assignment instance: protect .agentic-runner workflow state identity, append only validated packets, and avoid tracked-state leakage.",
 };
 const DEFAULT_FEATURE_PROFILE = "none";
+const WORKFLOW_PROFILE_CONTRACTS = {
+  default: {
+    domain: "agentic-runner",
+    contract: "agentic-runner.workflow.default.v1",
+    guidance: "Default Agentic Runner workflow behavior; preserves the fixed 14-role scaffold, supervision, debugging integrity, and metacognitive gate semantics.",
+  },
+  "plugin-source": {
+    domain: "agentic-runner.plugin-source",
+    contract: "agentic-runner.workflow.plugin-source.v1",
+    guidance: "Metadata-only profile for plugin source work; keeps source/cache/runtime boundaries visible while preserving the default scaffold and gates.",
+  },
+};
+const DEFAULT_WORKFLOW_PROFILE = "default";
 const WORK_TYPE_GUIDANCE = {
   auto: "Infer gate classification from task text, packet text, and path-like scope. This preserves existing behavior.",
   documentation: "Semantic metadata for docs-only work. Suppresses keyword/path metacognitive gate inference for this command, but does not downgrade gate-required workflow state.",
@@ -285,6 +298,7 @@ function intake(args) {
     taskId,
     epoch,
     scope,
+    workflowProfile: commandContext.workflowProfile,
     workType: commandContext.workType,
     stateDir: state.stateDir,
     gitRoot: state.gitRoot,
@@ -306,6 +320,8 @@ function intake(args) {
   console.log(`ok task_id: ${taskId}`);
   console.log(`ok epoch: ${epoch}`);
   console.log(`ok scope: ${scope}`);
+  console.log(`ok workflow_profile: ${workflowProfileId(commandContext)}`);
+  console.log(`ok workflow_domain_contract: ${workflowDomainContractId(commandContext)}`);
   console.log(`ok work_type: ${workTypeId(commandContext)}`);
   console.log(`ok self_host_target: ${commandContext.selfHostTarget}`);
   console.log(`ok self_host_gate: ${selfHostGateStatus(commandContext)}`);
@@ -471,6 +487,7 @@ function normalizeCodexResult(packet, context) {
     epoch: packet.epoch,
     scope: packet.scope,
     featureProfile: packet.featureProfile,
+    workflowProfile: packet.workflowProfile,
     workType: packet.workType,
     hierarchyFields: packet.hierarchyFields,
     supervisionTimingFields: packet.supervisionTimingFields,
@@ -508,6 +525,9 @@ task_id: ${packet.taskId}
 epoch: ${packet.epoch}
 scope: ${packet.scope}
 feature_profile: ${featureProfileId(packet)}
+workflow_profile: ${workflowProfileId(packet)}
+workflow_domain: ${workflowDomainId(packet)}
+workflow_domain_contract: ${workflowDomainContractId(packet)}
 work_type: ${workTypeId(packet)}
 invocation_cwd: ${packet.invocationCwd}
 target_cwd: ${packet.targetCwd}
@@ -742,6 +762,9 @@ function renderProject(context) {
 - task_id: ${context.taskId}
 - epoch: ${context.epoch}
 - scope: ${context.scope}
+- workflow_profile: ${workflowProfileId(context)}
+- workflow_domain: ${workflowDomainId(context)}
+- workflow_domain_contract: ${workflowDomainContractId(context)}
 - work_type: ${workTypeId(context)}
 `;
 }
@@ -752,6 +775,9 @@ function renderTask(context) {
 - task_id: ${context.taskId}
 - epoch: ${context.epoch}
 - scope: ${context.scope}
+- workflow_profile: ${workflowProfileId(context)}
+- workflow_domain: ${workflowDomainId(context)}
+- workflow_domain_contract: ${workflowDomainContractId(context)}
 - work_type: ${workTypeId(context)}
 - task: ${context.task}
 
@@ -797,6 +823,11 @@ function renderDecisions(context) {
 
 - accepted: use \`task_id=${context.taskId}\`, \`epoch=${context.epoch}\`, and \`scope=${context.scope}\` for this job.
 - impact: each role assignment must stay inside the declared scope.
+
+## D-${context.taskId}-001A Workflow Profile
+
+- accepted: workflow_profile=${workflowProfileId(context)}, workflow_domain=${workflowDomainId(context)}, workflow_domain_contract=${workflowDomainContractId(context)}.
+- impact: workflow profile records the domain contract for generated state; feature profiles remain separate assignment overlays.
 
 ## D-${context.taskId}-002 Marketplace Deferred
 
@@ -852,6 +883,9 @@ function renderAudit(context) {
 - task_id: ${context.taskId}
 - epoch: ${context.epoch}
 - scope: ${context.scope}
+- workflow_profile: ${workflowProfileId(context)}
+- workflow_domain: ${workflowDomainId(context)}
+- workflow_domain_contract: ${workflowDomainContractId(context)}
 - work_type: ${workTypeId(context)}
 - self_host_target: ${context.selfHostTarget}
 - self_host_gate: ${context.selfHostGate}
@@ -891,6 +925,11 @@ function renderAssignments(context) {
   return `# Role Assignment Scaffold
 
 These 14 sections are stable validation and routing slots. They are not resident agents or spawned workers; actual child work begins only when a scoped assignment is issued through parent-managed subagents or runner packets.
+
+- workflow_profile: ${workflowProfileId(context)}
+- workflow_domain: ${workflowDomainId(context)}
+- workflow_domain_contract: ${workflowDomainContractId(context)}
+- workflow_profile_guidance: ${workflowProfileGuidance(context)}
 
 ## Debugging Integrity Gate
 
@@ -936,6 +975,9 @@ You are an Agentic Runner worker for task \`${context.taskId}\`.
 - task: ${context.task}
 - epoch: ${context.epoch}
 - scope: ${context.scope}
+- workflow_profile: ${workflowProfileId(context)}
+- workflow_domain: ${workflowDomainId(context)}
+- workflow_domain_contract: ${workflowDomainContractId(context)}
 - work_type: ${workTypeId(context)}
 
 Read \`${STATE_DIR_NAME}/README.md\`, then \`project.md\`, \`task.md\`, \`todo.md\`, \`decisions.md\`, \`assignments.md\`, \`audit.md\`, and \`runner.md\` if present.
@@ -1351,6 +1393,7 @@ function requireAssignmentPacket(args, commandContext) {
     epoch: requireIdentityArg(args.epoch, "--epoch"),
     scope: requireIdentityArg(args.scope, "--scope"),
     featureProfile: resolveFeatureProfile(args.featureProfile),
+    workflowProfile: resolvePacketWorkflowProfile(commandContext),
     workType: commandContext.workType,
     hierarchyFields: resolveHierarchyFields(args),
     supervisionTimingFields: resolveSupervisionTimingFields(args),
@@ -1376,6 +1419,7 @@ function requireIntegrationPacket(args, commandContext) {
     epoch: requireIdentityArg(args.epoch, "--epoch"),
     scope: requireIdentityArg(args.scope, "--scope"),
     featureProfile: resolveFeatureProfile(args.featureProfile),
+    workflowProfile: resolvePacketWorkflowProfile(commandContext),
     workType: commandContext.workType,
     hierarchyFields: resolveHierarchyFields(args),
     supervisionTimingFields: resolveSupervisionTimingFields(args),
@@ -1627,6 +1671,9 @@ function renderAssignmentPacket(packet) {
 - epoch: ${packet.epoch}
 - scope: ${packet.scope}
 - feature_profile: ${featureProfileId(packet)}
+- workflow_profile: ${workflowProfileId(packet)}
+- workflow_domain: ${workflowDomainId(packet)}
+- workflow_domain_contract: ${workflowDomainContractId(packet)}
 - work_type: ${workTypeId(packet)}
 - invocation_cwd: ${packet.invocationCwd}
 - target_cwd: ${packet.targetCwd}
@@ -1650,6 +1697,9 @@ function renderIntegrationPacket(packet) {
 - epoch: ${packet.epoch}
 - scope: ${packet.scope}
 - feature_profile: ${featureProfileId(packet)}
+- workflow_profile: ${workflowProfileId(packet)}
+- workflow_domain: ${workflowDomainId(packet)}
+- workflow_domain_contract: ${workflowDomainContractId(packet)}
 - work_type: ${workTypeId(packet)}
 - invocation_cwd: ${packet.invocationCwd}
 - target_cwd: ${packet.targetCwd}
@@ -1678,6 +1728,9 @@ function renderOrchestrationSkeleton(packet) {
 - epoch: ${packet.epoch}
 - scope: ${packet.scope}
 - feature_profile: ${featureProfileId(packet)}
+- workflow_profile: ${workflowProfileId(packet)}
+- workflow_domain: ${workflowDomainId(packet)}
+- workflow_domain_contract: ${workflowDomainContractId(packet)}
 - work_type: ${workTypeId(packet)}
 - invocation_cwd: ${packet.invocationCwd}
 - target_cwd: ${packet.targetCwd}
@@ -1703,6 +1756,9 @@ function renderRunnerResult(result) {
 - epoch: ${result.epoch}
 - scope: ${result.scope}
 - feature_profile: ${featureProfileId(result)}
+- workflow_profile: ${workflowProfileId(result)}
+- workflow_domain: ${workflowDomainId(result)}
+- workflow_domain_contract: ${workflowDomainContractId(result)}
 - work_type: ${workTypeId(result)}
 - invocation_cwd: ${result.invocationCwd}
 - target_cwd: ${result.targetCwd}
@@ -1780,6 +1836,10 @@ function validateAssignmentFiles(stateDir) {
     fatal = true;
   }
 
+  const workflowProfileValidation = validateWorkflowProfileState(stateDir);
+  results.push(...workflowProfileValidation.results);
+  fatal = fatal || workflowProfileValidation.fatal;
+
   if (existsSync(assignmentPath)) {
     checkedFiles += 1;
     const text = readFileSync(assignmentPath, "utf8");
@@ -1802,6 +1862,20 @@ function validateAssignmentFiles(stateDir) {
   }
 
   return { results, fatal };
+}
+
+function validateWorkflowProfileState(stateDir) {
+  const taskPath = path.join(stateDir, "task.md");
+  if (!existsSync(taskPath)) return { results: [], fatal: false };
+  const workflowProfile = getFieldValue(readFileSync(taskPath, "utf8"), "workflow_profile");
+  if (!workflowProfile) return { results: [], fatal: false };
+  if (!isKnownWorkflowProfileId(workflowProfile)) {
+    return {
+      results: [["warn", `task.md:workflow_profile unknown (${workflowProfile})`]],
+      fatal: true,
+    };
+  }
+  return { results: [["ok", `workflow_profile present in task.md (${workflowProfile})`]], fatal: false };
 }
 
 function validateRoleAssignments(text, workflowGate = { required: false }) {
@@ -1900,6 +1974,10 @@ function validateRunnerPackets(text, workflowGate = { required: false }) {
     const workType = getFieldValue(section, "work_type");
     if (workType && !isKnownWorkTypeId(workType)) {
       invalidPackets.push(`${packetLabel(section)}.work_type unknown (${workType})`);
+    }
+    const workflowProfile = getFieldValue(section, "workflow_profile");
+    if (workflowProfile && !isKnownWorkflowProfileId(workflowProfile)) {
+      invalidPackets.push(`${packetLabel(section)}.workflow_profile unknown (${workflowProfile})`);
     }
     if (type === "assignment" || type === "process-orchestration-skeleton") {
       for (const field of ["assignment", "expected_output", "debugging_integrity", "lifecycle"]) {
@@ -2723,6 +2801,9 @@ function printLegacyHints(state) {
 }
 
 function resolveCommandContext(args) {
+  if (args.workflowProfile && args.command !== "intake") {
+    throw new CliError("--workflow-profile is only supported for intake; runner packets inherit workflow_profile from current state", 1);
+  }
   const invocationCwd = args.cwd ? requireDirectory(args.cwd, "--cwd") : requireDirectory(process.cwd(), "process cwd");
   const targetCwd = args.targetCwd ? requireDirectory(args.targetCwd, "--target-cwd") : invocationCwd;
   const targetGitRoot = resolveGitRoot(targetCwd);
@@ -2736,6 +2817,8 @@ function resolveCommandContext(args) {
     sourceGitRoot: SOURCE_GIT_ROOT,
     selfHostTarget,
     workType: resolveWorkType(args.workType),
+    workflowProfile: resolveWorkflowProfile(args.workflowProfile),
+    workflowProfileExplicit: Boolean(args.workflowProfile),
   };
 }
 
@@ -2804,6 +2887,19 @@ function resolveFeatureProfile(value) {
   return {
     id,
     guidance: id === DEFAULT_FEATURE_PROFILE ? null : FEATURE_PROFILE_GUIDANCE[id],
+  };
+}
+
+function resolveWorkflowProfile(value) {
+  const id = value === undefined || value === null || !String(value).trim()
+    ? DEFAULT_WORKFLOW_PROFILE
+    : singleLine(value);
+  if (!isKnownWorkflowProfileId(id)) {
+    throw new CliError(`unknown workflow profile: ${id}; expected one of ${knownWorkflowProfileIds().join(", ")}`, 1);
+  }
+  return {
+    id,
+    ...WORKFLOW_PROFILE_CONTRACTS[id],
   };
 }
 
@@ -2883,6 +2979,43 @@ function knownFeatureProfileIds() {
 
 function featureProfileId(packet) {
   return packet?.featureProfile?.id || DEFAULT_FEATURE_PROFILE;
+}
+
+function isKnownWorkflowProfileId(id) {
+  return Object.prototype.hasOwnProperty.call(WORKFLOW_PROFILE_CONTRACTS, id);
+}
+
+function knownWorkflowProfileIds() {
+  return Object.keys(WORKFLOW_PROFILE_CONTRACTS);
+}
+
+function workflowProfileId(packet) {
+  return packet?.workflowProfile?.id || DEFAULT_WORKFLOW_PROFILE;
+}
+
+function workflowDomainId(packet) {
+  return packet?.workflowProfile?.domain || WORKFLOW_PROFILE_CONTRACTS[DEFAULT_WORKFLOW_PROFILE].domain;
+}
+
+function workflowDomainContractId(packet) {
+  return packet?.workflowProfile?.contract || WORKFLOW_PROFILE_CONTRACTS[DEFAULT_WORKFLOW_PROFILE].contract;
+}
+
+function workflowProfileGuidance(packet) {
+  return packet?.workflowProfile?.guidance || WORKFLOW_PROFILE_CONTRACTS[DEFAULT_WORKFLOW_PROFILE].guidance;
+}
+
+function resolvePacketWorkflowProfile(commandContext) {
+  if (commandContext.workflowProfileExplicit) return commandContext.workflowProfile;
+  const state = resolveWorkflowState(commandContext.targetCwd);
+  return readWorkflowProfileContext(state.stateDir);
+}
+
+function readWorkflowProfileContext(stateDir) {
+  const taskPath = path.join(stateDir, "task.md");
+  if (!existsSync(taskPath)) return resolveWorkflowProfile(DEFAULT_WORKFLOW_PROFILE);
+  const text = readFileSync(taskPath, "utf8");
+  return resolveWorkflowProfile(getFieldValue(text, "workflow_profile") || DEFAULT_WORKFLOW_PROFILE);
 }
 
 function isKnownWorkTypeId(id) {
@@ -2967,7 +3100,7 @@ function printHelp() {
   console.log(`agentic-runner MVP CLI
 
 Usage:
-  node bin/agentic-runner.mjs intake [--cwd <path>] [--target-cwd <path>] [--work-type <id>] --task <text> --task-id <id> --epoch <epoch> --scope <scope>
+  node bin/agentic-runner.mjs intake [--cwd <path>] [--target-cwd <path>] [--workflow-profile <id>] [--work-type <id>] --task <text> --task-id <id> --epoch <epoch> --scope <scope>
   node bin/agentic-runner.mjs assign [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text>
   node bin/agentic-runner.mjs collect [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] --status <status> [--findings <text>] [--changed-files <text>] [--verification <text>] [--blockers <text>] [--assumptions <text>] [--next <text>] [--expected-outcome <text>] [--actual-result <text>] [--reproduction-or-evidence <text>] [--failure-point <text>] [--hypothesis-branches <text>] [--source-of-truth-boundary <text>] [--plugin-contract-boundary <text>] [--generated-artifact-boundary <text>] [--before-context-effects <text>] [--after-context-effects <text>] [--cross-feature-consequences <text>] [--root-cause <text>] [--fix-summary <text>] [--verification-evidence <text>] [--skipped-checks <text>] [--unresolved-risks <text>] [--next-investigation <text>]
   node bin/agentic-runner.mjs run|orchestrate [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text> [--runner codex-cli] [--timeout-ms <ms>]
@@ -3003,6 +3136,7 @@ State:
   Parent-managed child-worker prompts also suppress nested Agentic Runner preflight; child workers do not ask \`agentic-runner を使いますか？ [Y/n]\` or start independent nested Agentic Runner workflows inside an assigned task_id/epoch/scope. Descendant delegation is allowed only when finite hierarchy fields grant remaining_depth > 0 and inherited supervision is preserved.
   Supervision treats silence before heartbeat deadline as neutral, forbids cancel/interrupt/retire/replace during the no-interrupt window, treats heartbeat as telemetry rather than completion evidence, requires explicit retire/cancel reasons (${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}), and uses missed heartbeat -> soft ping/status request -> grace wait -> stale mark before cancel/replace.
   Optional --feature-profile overlays provide scoped assignment guidance only. Known ids: ${knownFeatureProfileIds().join(", ")}.
+  Optional --workflow-profile selects the workflow/domain contract for intake state. Known ids: ${knownWorkflowProfileIds().join(", ")}. Missing workflow_profile in old state is treated as ${DEFAULT_WORKFLOW_PROFILE}.
   Optional --work-type is semantic command metadata. Known ids: ${knownWorkTypeIds().join(", ")}.
   --work-type auto preserves keyword/path inference. --work-type source-change and --work-type debug force the metacognitive gate for that command.
   --work-type documentation suppresses keyword/path gate inference for that command only; it does not replace debug/root-cause gates and cannot downgrade existing gate-required workflow state.

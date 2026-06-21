@@ -447,6 +447,222 @@ test("intake generates supervision guidance in assignments and handoff", () => {
   }
 });
 
+test("intake persists the default workflow profile and domain contract", () => {
+  const repo = makeTempGitRepo();
+  try {
+    const result = runCli([
+      "intake",
+      "--target-cwd",
+      repo,
+      "--task",
+      "record default workflow profile metadata",
+      "--task-id",
+      "workflow-default",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /ok workflow_profile: default/);
+    assert.match(result.stdout, /ok workflow_domain_contract: agentic-runner\.workflow\.default\.v1/);
+
+    for (const file of ["project.md", "task.md", "assignments.md", "handoff.md"]) {
+      const text = readState(repo, file);
+      assert.match(text, /workflow_profile: default/);
+      assert.match(text, /workflow_domain: agentic-runner/);
+      assert.match(text, /workflow_domain_contract: agentic-runner\.workflow\.default\.v1/);
+    }
+    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+    assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("old workflow state without workflow profile fields behaves as default", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, { taskId: "workflow-legacy-default", epoch: "e1", scope: "README.md" });
+    for (const file of ["project.md", "task.md", "assignments.md", "handoff.md", "audit.md", "decisions.md"]) {
+      const filePath = path.join(repo, ".agentic-runner", file);
+      writeFileSync(filePath, stripWorkflowProfileLines(readFileSync(filePath, "utf8")), "utf8");
+    }
+
+    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+    assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
+
+    const assigned = runCli([
+      "assign",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "workflow-legacy-default",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--assignment",
+      "append a packet from old no-profile state",
+      "--expected-output",
+      "assignment packet",
+    ]);
+    assert.equal(assigned.status, 0, assigned.stderr);
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /workflow_profile: default/);
+    assert.match(runner, /workflow_domain_contract: agentic-runner\.workflow\.default\.v1/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("explicit non-default workflow profile persists separately from feature profiles", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, {
+      taskId: "workflow-plugin-source",
+      epoch: "e1",
+      scope: "README.md",
+      workflowProfile: "plugin-source",
+    });
+
+    const project = readState(repo, "project.md");
+    const task = readState(repo, "task.md");
+    const assignments = readState(repo, "assignments.md");
+    const handoff = readState(repo, "handoff.md");
+    for (const text of [project, task, assignments, handoff]) {
+      assert.match(text, /workflow_profile: plugin-source/);
+      assert.match(text, /workflow_domain: agentic-runner\.plugin-source/);
+      assert.match(text, /workflow_domain_contract: agentic-runner\.workflow\.plugin-source\.v1/);
+    }
+    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent)(.+)$/gm)].length, 14);
+
+    const assigned = runCli([
+      "assign",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "workflow-plugin-source",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--feature-profile",
+      "debug.reproducer",
+      "--assignment",
+      "confirm profile metadata stays distinct",
+      "--expected-output",
+      "assignment packet",
+    ]);
+    assert.equal(assigned.status, 0, assigned.stderr);
+
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /feature_profile: debug\.reproducer/);
+    assert.match(runner, /workflow_profile: plugin-source/);
+    assert.match(runner, /workflow_domain_contract: agentic-runner\.workflow\.plugin-source\.v1/);
+    assert.doesNotMatch(assignments, /feature_profile: debug\.reproducer/);
+    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("workflow profiles cannot be overridden by runner packets", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, {
+      taskId: "workflow-packet-override",
+      epoch: "e1",
+      scope: "README.md",
+      workflowProfile: "plugin-source",
+    });
+
+    const rejected = runCli([
+      "assign",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "workflow-packet-override",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--workflow-profile",
+      "default",
+      "--assignment",
+      "try to override workflow profile from a runner packet",
+      "--expected-output",
+      "rejected packet",
+    ]);
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /--workflow-profile is only supported for intake/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("doctor and verify reject unknown workflow profile in task state", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, {
+      taskId: "workflow-corrupt-profile",
+      epoch: "e1",
+      scope: "README.md",
+      workflowProfile: "plugin-source",
+    });
+    const taskPath = path.join(repo, ".agentic-runner", "task.md");
+    writeFileSync(
+      taskPath,
+      readFileSync(taskPath, "utf8").replace("workflow_profile: plugin-source", "workflow_profile: impossible-profile"),
+      "utf8",
+    );
+
+    const doctor = runCli(["doctor", "--target-cwd", repo]);
+    assert.notEqual(doctor.status, 0);
+    assert.match(doctor.stdout, /task\.md:workflow_profile unknown \(impossible-profile\)/);
+
+    const verify = runCli(["verify-assignments", "--target-cwd", repo]);
+    assert.notEqual(verify.status, 0);
+    assert.match(verify.stdout, /task\.md:workflow_profile unknown \(impossible-profile\)/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("unknown workflow profile fails before writing state", () => {
+  const repo = makeTempGitRepo();
+  try {
+    const rejected = runCli([
+      "intake",
+      "--target-cwd",
+      repo,
+      "--workflow-profile",
+      "unknown-domain",
+      "--task",
+      "try an unknown workflow profile",
+      "--task-id",
+      "workflow-reject",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+    ]);
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /unknown workflow profile: unknown-domain/);
+    assert.match(rejected.stderr, /default, plugin-source/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner")), false);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("feature profiles are optional overlays and do not change the fixed 14-role scaffold", () => {
   const repo = makeTempGitRepo();
   try {
@@ -688,9 +904,9 @@ test("valid feature profile renders in assignment, collect, and run skeleton pac
     assert.match(runner, /type: assignment[\s\S]*feature_profile: debug\.reproducer/);
     assert.match(runner, /type: parent-integration[\s\S]*feature_profile: debug\.reproducer/);
     assert.match(runner, /type: process-orchestration-skeleton[\s\S]*feature_profile: debug\.reproducer/);
-    assert.match(runner, /type: assignment[\s\S]*feature_profile: debug\.reproducer\n- work_type: auto/);
-    assert.match(runner, /type: parent-integration[\s\S]*feature_profile: debug\.reproducer\n- work_type: auto/);
-    assert.match(runner, /type: process-orchestration-skeleton[\s\S]*feature_profile: debug\.reproducer\n- work_type: auto/);
+    assert.match(runner, /type: assignment[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
+    assert.match(runner, /type: parent-integration[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
+    assert.match(runner, /type: process-orchestration-skeleton[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
     assert.match(runner, /feature_profile_guidance: .*reproduce the expected versus actual behavior/);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
   } finally {
@@ -1872,6 +2088,7 @@ function intake(repo, options) {
     "--scope",
     options.scope,
   ];
+  if (options.workflowProfile) args.splice(3, 0, "--workflow-profile", options.workflowProfile);
   if (options.workType) args.splice(3, 0, "--work-type", options.workType);
   const result = runCli(args);
   assert.equal(result.status, 0, result.stderr);
@@ -2054,6 +2271,13 @@ function stripTimingLines(text) {
   return text
     .split(/\r?\n/)
     .filter((line) => !/^- (?:heartbeat_interval|heartbeat_deadline|max_silence|soft_timeout|hard_timeout|no_interrupt_until|cancel_reason_required):/.test(line))
+    .join("\n");
+}
+
+function stripWorkflowProfileLines(text) {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^- workflow_(?:profile|domain|domain_contract|profile_guidance):/.test(line))
     .join("\n");
 }
 
