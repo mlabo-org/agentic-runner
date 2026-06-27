@@ -31,5 +31,8 @@
       "Audit Agentic Runner self-host conditions before source edits."
     ],
     "brandColor": "#2563EB"
+  },
+  "author": {
+    "name": "Local developer"
   }
 }
