@@ -4,6 +4,11 @@ This document is a tracked source specification for confirmed Agentic Runner
 behavior. It is not workflow state and must not be treated as a generated
 `docs/codex` log.
 
+Read this together with
+`docs/specs/agentic-runner-orchestration-purpose-spec.md` when evaluating
+Agentic Runner's future purpose, self-change work, or risk of drifting into a
+generic code generator.
+
 ## Confirmed Boundary
 
 Items 0-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
