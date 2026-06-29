@@ -9,24 +9,23 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = path.join(REPO_ROOT, "bin", "agentic-runner.mjs");
 
-test("source identity contains no legacy runner brand strings", () => {
-  const forbidden = [
-    ["cod", "ing", "-agents"].join(""),
-    ["Cod", "ing ", "Agents"].join(""),
-    ["cod", "ing ", "agents"].join(""),
-    [".", "cod", "ing", "-agents"].join(""),
-    ["cod", "ing", "_agents"].join(""),
-    ["COD", "ING", "_AGENTS"].join(""),
-  ];
+test("source identity rejects legacy Coding Agents identity misuse but allows controlled routed workflow names", () => {
+  assert.deepEqual(
+    findLegacyIdentityMisuse("fixture.md", "Agentic Runner routes source fixes to coding-agents from the control-plane."),
+    [],
+  );
+  assert.ok(findLegacyIdentityMisuse("fixture.json", `"name": "${["coding", "agents"].join("-")}"`).length);
+  assert.ok(findLegacyIdentityMisuse("fixture.yaml", `display_name: ${["Coding", "Agents"].join(" ")}`).length);
+  assert.ok(findLegacyIdentityMisuse("fixture.mjs", `const STATE_DIR_NAME = ".${["coding", "agents"].join("-")}";`).length);
+  assert.ok(findLegacyIdentityMisuse("fixture.mjs", `const env = '${["CODING", "AGENTS"].join("_")}';`).length);
+
   const listed = spawnSync("git", ["ls-files"], { cwd: REPO_ROOT, encoding: "utf8" });
   assert.equal(listed.status, 0, listed.stderr);
 
   const hits = [];
   for (const file of listed.stdout.trim().split("\n").filter(Boolean)) {
     const text = readFileSync(path.join(REPO_ROOT, file), "utf8");
-    for (const token of forbidden) {
-      if (text.includes(token)) hits.push(`${file}: ${token}`);
-    }
+    hits.push(...findLegacyIdentityMisuse(file, text));
   }
 
   assert.deepEqual(hits, []);
@@ -404,7 +403,7 @@ test("intake describes fixed roles as scaffold, not resident agents", () => {
     const assignments = readState(repo, "assignments.md");
     assert.match(assignments, /# Role Assignment Scaffold/);
     assert.match(assignments, /not resident agents or spawned workers/);
-    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent)(.+)$/gm)].length, 14);
+    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent|Specialist)(.+)$/gm)].length, 14);
     assert.match(assignments, /- status: scaffolded/);
 
     const verify = runCli(["verify-assignments", "--target-cwd", repo]);
@@ -535,7 +534,7 @@ test("coding-agent workflow profile persists separately from feature profiles an
       assert.match(text, /workflow_domain: agentic-runner\.coding-agent/);
       assert.match(text, /workflow_domain_contract: agentic-runner\.workflow\.coding-agent\.v1/);
     }
-    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent)(.+)$/gm)].length, 14);
+    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent|Specialist)(.+)$/gm)].length, 14);
 
     const assigned = runCli([
       "assign",
@@ -585,6 +584,244 @@ test("plugin-source workflow profile remains a narrower source cache boundary pr
     assert.match(task, /workflow_domain: agentic-runner\.plugin-source/);
     assert.match(task, /workflow_domain_contract: agentic-runner\.workflow\.plugin-source\.v1/);
     assert.match(assignments, /workflow_profile_guidance: Narrow metadata-only profile for plugin source work/);
+    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("intake classifies upper-layer routes and records controlled workflow boundaries", () => {
+  for (const [taskId, task, expectedRoute, expectedExecutionOwner] of [
+    ["route-article", "BLOG記事をSWELL向けに構成して本文を作る", "article", "agentic-structciv"],
+    ["route-coding", "Fix a source CLI bug and run tests", "coding", "coding-agents"],
+    ["route-video", "この原稿で3分程度のショート動画を作れ。声は俺の声でな。", "video", "codex-video"],
+    ["route-mixed", "BLOG記事を作ってからショート動画化し、必要ならsource CLIも修正する", "mixed", "agentic-runner"],
+  ]) {
+    const repo = makeTempGitRepo();
+    try {
+      const result = runCli([
+        "intake",
+        "--target-cwd",
+        repo,
+        "--task",
+        task,
+        "--task-id",
+        taskId,
+        "--epoch",
+        "e1",
+        "--scope",
+        "README.md",
+      ]);
+      assert.equal(result.status, 0, `${taskId}: ${result.stderr}`);
+      assert.match(result.stdout, new RegExp(`ok route_class: ${expectedRoute}`));
+      assert.match(result.stdout, new RegExp(`ok primary_workflow: ${expectedExecutionOwner}`));
+
+      const taskState = readState(repo, "task.md");
+      assert.match(taskState, new RegExp(`route_class: ${expectedRoute}`));
+      assert.match(taskState, /agentic_runner_layer: control-plane/);
+      assert.match(taskState, /controlled_workflows:/);
+      assert.match(taskState, new RegExp(`execution_owner: ${expectedExecutionOwner}`));
+      assert.match(taskState, /route_contract: Agentic Runner routes and audits; specialist workflows are not replaced by this state scaffold\./);
+
+      const assignments = readState(repo, "assignments.md");
+      assert.match(assignments, /route_layer: Agentic Runner is the upper orchestration layer; specialist workflows are execution layers\./);
+      assert.match(assignments, /route_contract: Agentic Runner owns routing, handoff, state, supervision, and audit; specialist workflows own production and verification evidence\./);
+      assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+      assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }
+});
+
+test("mixed route requires explicit subordinate execution owner on runner packets", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, {
+      taskId: "mixed-owner",
+      epoch: "e1",
+      scope: "README.md",
+      workType: "source-change",
+      task: "BLOG記事を作り、ショート動画化し、必要ならsource CLIも修正する",
+    });
+
+    const missingOwner = runCli([
+      "assign",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "mixed-owner",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--work-type",
+      "source-change",
+      "--assignment",
+      "route one subordinate execution unit",
+      "--expected-output",
+      "assignment packet",
+    ]);
+    assert.notEqual(missingOwner.status, 0);
+    assert.match(missingOwner.stderr, /--specialist-owner is required for route_class mixed/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const assigned = runCli([
+      "assign",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "mixed-owner",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--work-type",
+      "source-change",
+      "--specialist-owner",
+      "coding-agents",
+      "--assignment",
+      "route the source repair unit below Agentic Runner",
+      "--expected-output",
+      "coding-agents packet",
+    ]);
+    assert.equal(assigned.status, 0, assigned.stderr);
+
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /route_class: mixed/);
+    assert.match(runner, /agentic_runner_layer: control-plane/);
+    assert.match(runner, /controlled_workflows: agentic-runner, coding-agents, agentic-structciv, codex-video/);
+    assert.match(runner, /execution_owner: coding-agents/);
+    assert.match(runner, /specialist_owner: coding-agents/);
+    assert.match(runner, /layer_boundary: Agentic Runner operates above coding-agents, Agentic StructCiv, and CodexVideo/);
+    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("doctor and verify reject corrupted route state and subordinate owner fields", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, { taskId: "route-corrupt-task", epoch: "e1", scope: "README.md" });
+    const taskPath = path.join(repo, ".agentic-runner", "task.md");
+    writeFileSync(taskPath, readFileSync(taskPath, "utf8").replace("route_class: unknown", "route_class: impossible"), "utf8");
+
+    const doctor = runCli(["doctor", "--target-cwd", repo]);
+    assert.notEqual(doctor.status, 0);
+    assert.match(doctor.stdout, /task\.md\.route_class unknown \(impossible\)/);
+
+    const verify = runCli(["verify-assignments", "--target-cwd", repo]);
+    assert.notEqual(verify.status, 0);
+    assert.match(verify.stdout, /task\.md\.route_class unknown \(impossible\)/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  const packetRepo = makeTempGitRepo();
+  try {
+    intake(packetRepo, {
+      taskId: "route-corrupt-packet",
+      epoch: "e1",
+      scope: "README.md",
+      task: "Fix source CLI behavior",
+    });
+    const assigned = runCli([
+      "assign",
+      "--target-cwd",
+      packetRepo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "route-corrupt-packet",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--assignment",
+      "route coding work below Agentic Runner",
+      "--expected-output",
+      "assignment packet",
+    ]);
+    assert.equal(assigned.status, 0, assigned.stderr);
+    const runnerPath = path.join(packetRepo, ".agentic-runner", "runner.md");
+    writeFileSync(runnerPath, readFileSync(runnerPath, "utf8").replace("specialist_owner: coding-agents", "specialist_owner: nobody"), "utf8");
+
+    const verify = runCli(["verify-assignments", "--target-cwd", packetRepo]);
+    assert.notEqual(verify.status, 0);
+    assert.match(verify.stdout, /specialist_owner unknown \(nobody\)/);
+
+    const doctor = runCli(["doctor", "--target-cwd", packetRepo]);
+    assert.notEqual(doctor.status, 0);
+    assert.match(doctor.stdout, /specialist_owner unknown \(nobody\)/);
+  } finally {
+    rmSync(packetRepo, { recursive: true, force: true });
+  }
+});
+
+test("orchestrate records control-plane orchestration state and rejects process runners", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, {
+      taskId: "route-orchestrate",
+      epoch: "e1",
+      scope: "README.md",
+      task: "Fix source CLI behavior",
+    });
+
+    const rejected = runCli([
+      "orchestrate",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Planner",
+      "--task-id",
+      "route-orchestrate",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--assignment",
+      "route coding work",
+      "--expected-output",
+      "orchestration state",
+      "--runner",
+      "codex-cli",
+    ]);
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /orchestrate records route\/orchestration state only/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const routed = runCli([
+      "orchestrate",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Planner",
+      "--task-id",
+      "route-orchestrate",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--assignment",
+      "route coding work",
+      "--expected-output",
+      "orchestration state",
+    ]);
+    assert.equal(routed.status, 0, routed.stderr);
+    assert.match(routed.stdout, /ok orchestration_state: Planner/);
+
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /type: orchestration-state/);
+    assert.doesNotMatch(runner, /type: process-runner-result/);
+    assert.match(runner, /current_specialist: coding-agents/);
+    assert.match(runner, /agentic_runner_layer: control-plane/);
+    assert.match(runner, /cross_workflow_audit: coding-agents result accepted by agentic-runner route audit/);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -710,7 +947,7 @@ test("feature profiles are optional overlays and do not change the fixed 14-role
     assert.equal(assigned.status, 0, assigned.stderr);
 
     const assignments = readState(repo, "assignments.md");
-    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent)(.+)$/gm)].length, 14);
+    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent|Specialist)(.+)$/gm)].length, 14);
     assert.doesNotMatch(assignments, /workflow\.state-safety/);
     assert.doesNotMatch(assignments, /^## workflow\.state-safety$/m);
 
@@ -845,7 +1082,7 @@ test("n_level hierarchy requires finite max depth before runner state append", (
   }
 });
 
-test("valid feature profile renders in assignment, collect, and run skeleton packets", () => {
+test("valid feature profile renders in assignment, collect, and control-plane orchestration packets", () => {
   const repo = makeTempGitRepo();
   try {
     intake(repo, { taskId: "profile-render", epoch: "e1", scope: "README.md" });
@@ -923,10 +1160,12 @@ test("valid feature profile renders in assignment, collect, and run skeleton pac
     const runner = readState(repo, "runner.md");
     assert.match(runner, /type: assignment[\s\S]*feature_profile: debug\.reproducer/);
     assert.match(runner, /type: parent-integration[\s\S]*feature_profile: debug\.reproducer/);
-    assert.match(runner, /type: process-orchestration-skeleton[\s\S]*feature_profile: debug\.reproducer/);
+    assert.match(runner, /type: orchestration-state[\s\S]*feature_profile: debug\.reproducer/);
     assert.match(runner, /type: assignment[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
     assert.match(runner, /type: parent-integration[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
-    assert.match(runner, /type: process-orchestration-skeleton[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
+    assert.match(runner, /type: orchestration-state[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
+    assert.match(runner, /type: orchestration-state[\s\S]*agentic_runner_layer: control-plane/);
+    assert.match(runner, /type: orchestration-state[\s\S]*layer_boundary: Agentic Runner operates above coding-agents/);
     assert.match(runner, /feature_profile_guidance: .*reproduce the expected versus actual behavior/);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
   } finally {
@@ -2226,6 +2465,7 @@ function modernRunnerPacket(taskId) {
 - scope: README.md
 - feature_profile: none
 - work_type: auto
+${testPacketRouteFieldLines()}
 - invocation_cwd: /tmp/modern
 - target_cwd: /tmp/modern
 - assignment: make a scoped documentation change
@@ -2271,6 +2511,25 @@ function supervisionFieldLines() {
 - hard_timeout: PT120M
 - no_interrupt_until: PT30M
 - cancel_reason_required: true`;
+}
+
+function testPacketRouteFieldLines() {
+  return `- route_class: unknown
+- agentic_runner_layer: control-plane
+- controlled_workflows: agentic-runner
+- execution_owner: agentic-runner
+- primary_workflow: agentic-runner
+- workflow_owners: agentic-runner
+- artifact_owners: agentic-runner
+- verification_owners: agentic-runner
+- handoff_artifacts: agentic-runner route note
+- resume_checkpoint: agentic-runner-after-intake-clarification
+- cross_workflow_completion: agentic-runner confirms whether specialist workflow routing is required
+- specialist_owner: agentic-runner
+- specialist_owner_label: Agentic Runner
+- specialist_ownership: control-plane routing, cross-workflow handoff, state, supervision, resume decisions, and final audit
+- agentic_runner_ownership: control-plane routing, cross-workflow handoff, state, supervision, resume decisions, and final audit
+- layer_boundary: Agentic Runner operates above coding-agents, Agentic StructCiv, and CodexVideo; it routes, supervises, resumes, and audits them instead of duplicating their specialist execution.`;
 }
 
 function stripSupervisionLines(text) {
@@ -2323,6 +2582,26 @@ function getRoleSection(text, role) {
   const next = text.slice(start + startMatch[0].length).search(/^## /m);
   if (next === -1) return text.slice(start);
   return text.slice(start, start + startMatch[0].length + next);
+}
+
+function findLegacyIdentityMisuse(file, text) {
+  const routedName = ["coding", "agents"].join("-");
+  const titleName = ["Coding", "Agents"].join(" ");
+  const snakeName = ["coding", "agents"].join("_");
+  const upperSnakeName = ["CODING", "AGENTS"].join("_");
+  const rules = [
+    [new RegExp(`"name"\\s*:\\s*"${escapeRegExp(routedName)}"`, "i"), "plugin name uses legacy routed workflow id"],
+    [new RegExp(`^display_name:\\s*${escapeRegExp(titleName)}\\s*$`, "m"), "display_name uses legacy title"],
+    [new RegExp(`"displayName"\\s*:\\s*"${escapeRegExp(titleName)}"`, "i"), "displayName uses legacy title"],
+    [new RegExp(`Generated by ${escapeRegExp(routedName)}`, "i"), "generated identity uses legacy routed workflow id"],
+    [new RegExp(`\\bSTATE_DIR_NAME\\s*=\\s*["']\\.${escapeRegExp(routedName)}["']`), "state dir uses legacy dot-dir"],
+    [new RegExp(`\\.${escapeRegExp(routedName)}\\/`), "path uses legacy dot-dir"],
+    [new RegExp(`\\b${escapeRegExp(snakeName)}\\b`), "snake_case legacy workflow id"],
+    [new RegExp(`\\b${escapeRegExp(upperSnakeName)}\\b`), "upper snake legacy workflow id"],
+  ];
+  return rules
+    .filter(([pattern]) => pattern.test(text))
+    .map(([, message]) => `${file}: ${message}`);
 }
 
 function escapeRegExp(value) {

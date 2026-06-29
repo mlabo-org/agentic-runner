@@ -1,7 +1,7 @@
 {
   "name": "agentic-runner",
   "version": "0.1.0",
-  "description": "対象 jobsite の Git root に .agentic-runner 状態を置き、固定ロール scaffold、有限階層の supervised scoped assignment packet、intake / planning / audit、source-change gate、DEBUG 根本原因ゲート、self-host gate を支援する。",
+  "description": "Agentic Runner は coding-agents、Agentic StructCiv、CodexVideo などの subordinate execution workflow を自在に制御する上位 control-plane。対象 jobsite の .agentic-runner 状態に route_class、controlled_workflows、execution_owner、handoff、resume checkpoint、cross-workflow audit、固定ロール scaffold、supervised scoped assignment、source-change/debug/self-host gate を記録する。",
   "skills": "./skills/",
   "keywords": [
     "agentic-runner",
@@ -11,12 +11,22 @@
     "delegation-depth",
     "audit",
     "metacognitive-debug",
-    "source-change-gate"
+    "source-change-gate",
+    "control-plane",
+    "workflow-router",
+    "specialist-routing",
+    "controlled-workflows",
+    "coding-agents",
+    "agentic-structciv",
+    "codex-video",
+    "cross-workflow-audit",
+    "stateful-handoff",
+    "resume-checkpoint"
   ],
   "interface": {
     "displayName": "Agentic Runner",
-    "shortDescription": "Target-repo workflow state, scoped assignments, handoff/audit, source CLI, and self-host/debug/source-change gates.",
-    "longDescription": "Resolves the jobsite or explicit --target-cwd repository, stores .agentic-runner state under that target git root, and records a fixed role scaffold plus optional supervised scoped assignment packets for parent-managed specialist work. It supports finite delegation depth, heartbeat-based long-running worker supervision, stale-safe cancellation rules, intake, planning, audit, source-change metacognitive gating, debug root-cause integrity, metacognitive context-impact checks, and an explicit self-host gate so Agentic Runner source edits remain external-supervised by default.",
+    "shortDescription": "Upper control-plane for routing coding-agents, Agentic StructCiv, CodexVideo, handoff/audit, source CLI, and gates.",
+    "longDescription": "Resolves the jobsite or explicit --target-cwd repository, stores .agentic-runner state under that target git root, and acts as the upper control-plane above subordinate execution workflows such as coding-agents, Agentic StructCiv, and CodexVideo. Agentic Runner records route_class, controlled_workflows, execution_owner, handoff artifacts, resume checkpoints, and cross-workflow audit state instead of duplicating specialist execution. It also records a fixed role scaffold plus optional supervised scoped assignment packets, finite delegation depth, heartbeat-based supervision, stale-safe cancellation rules, intake, planning, audit, source-change metacognitive gating, debug root-cause integrity, metacognitive context-impact checks, and an explicit self-host gate so Agentic Runner source edits remain external-supervised by default.",
     "developerName": "suzukimakoto",
     "category": "Productivity",
     "capabilities": [
@@ -26,9 +36,9 @@
       "Audit"
     ],
     "defaultPrompt": [
-      "Run Agentic Runner intake for this target repo.",
-      "Create supervised Agentic Runner scoped assignment packets for this active task.",
-      "Audit Agentic Runner self-host conditions before source edits."
+      "Use Agentic Runner as the upper control-plane to classify, route, and write .agentic-runner state.",
+      "Create supervised packets for subordinate owners: coding-agents, Agentic StructCiv, or CodexVideo.",
+      "Audit Agentic Runner handoff, resume checkpoint, cross-workflow completion, and self-host conditions before source edits."
     ],
     "brandColor": "#2563EB"
   },

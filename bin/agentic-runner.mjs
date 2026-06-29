@@ -129,6 +129,95 @@ const WORK_TYPE_GUIDANCE = {
   debug: "Semantic metadata for debugging or failure-correction work. Forces the metacognitive debug/root-cause gate for this command.",
 };
 const DEFAULT_WORK_TYPE = "auto";
+const SPECIALIST_WORKFLOW_CONTRACTS = {
+  "agentic-runner": {
+    label: "Agentic Runner",
+    owns: "control-plane routing, cross-workflow handoff, state, supervision, resume decisions, and final audit",
+  },
+  "coding-agents": {
+    label: "coding-agents",
+    owns: "code generation, debugging, source repair, and implementation verification",
+  },
+  "agentic-structciv": {
+    label: "Agentic StructCiv",
+    owns: "article, BLOG, WordPress, SWELL, and structured writing workflows",
+  },
+  "codex-video": {
+    label: "CodexVideo",
+    owns: "video, short-form, voice, narration, subtitles, and source-to-video workflows",
+  },
+};
+const DEFAULT_ROUTE_CLASS = "unknown";
+const DEFAULT_PRIMARY_WORKFLOW = "agentic-runner";
+const ROUTE_CLASS_CONTRACTS = {
+  unknown: {
+    primaryWorkflow: "agentic-runner",
+    workflowOwners: ["agentic-runner"],
+    artifactOwners: ["agentic-runner"],
+    verificationOwners: ["agentic-runner"],
+    handoffArtifacts: ["agentic-runner route note"],
+    resumeCheckpoint: "agentic-runner-after-intake-clarification",
+    crossWorkflowCompletion: "agentic-runner confirms whether specialist workflow routing is required",
+  },
+  coding: {
+    primaryWorkflow: "coding-agents",
+    workflowOwners: ["coding-agents"],
+    artifactOwners: ["coding-agents"],
+    verificationOwners: ["coding-agents", "agentic-runner"],
+    handoffArtifacts: ["coding-agents scoped assignment packet", "agentic-runner route audit"],
+    resumeCheckpoint: "agentic-runner-after-coding-agents-verification",
+    crossWorkflowCompletion: "coding-agents result accepted by agentic-runner route audit",
+  },
+  article: {
+    primaryWorkflow: "agentic-structciv",
+    workflowOwners: ["agentic-structciv"],
+    artifactOwners: ["agentic-structciv"],
+    verificationOwners: ["agentic-structciv", "agentic-runner"],
+    handoffArtifacts: ["agentic-structciv brief packet", "agentic-runner route audit"],
+    resumeCheckpoint: "agentic-runner-after-agentic-structciv-verification",
+    crossWorkflowCompletion: "agentic-structciv result accepted by agentic-runner route audit",
+  },
+  video: {
+    primaryWorkflow: "codex-video",
+    workflowOwners: ["codex-video"],
+    artifactOwners: ["codex-video"],
+    verificationOwners: ["codex-video", "agentic-runner"],
+    handoffArtifacts: ["codex-video production packet", "agentic-runner route audit"],
+    resumeCheckpoint: "agentic-runner-after-codex-video-verification",
+    crossWorkflowCompletion: "codex-video result accepted by agentic-runner route audit",
+  },
+  "plugin-source": {
+    primaryWorkflow: "coding-agents",
+    workflowOwners: ["coding-agents", "agentic-runner"],
+    artifactOwners: ["coding-agents"],
+    verificationOwners: ["coding-agents", "agentic-runner"],
+    handoffArtifacts: ["coding-agents plugin-source packet", "agentic-runner source-cache-runtime audit"],
+    resumeCheckpoint: "agentic-runner-after-plugin-source-verification",
+    crossWorkflowCompletion: "coding-agents source result accepted after agentic-runner source-cache-runtime audit",
+  },
+  mixed: {
+    primaryWorkflow: "agentic-runner",
+    workflowOwners: ["agentic-runner", "coding-agents", "agentic-structciv", "codex-video"],
+    artifactOwners: ["coding-agents", "agentic-structciv", "codex-video"],
+    verificationOwners: ["coding-agents", "agentic-structciv", "codex-video", "agentic-runner"],
+    handoffArtifacts: ["specialist route packets", "cross-workflow handoff", "agentic-runner route audit"],
+    resumeCheckpoint: "agentic-runner-after-specialist-verification",
+    crossWorkflowCompletion: "each specialist result accepted by its owner then reconciled by agentic-runner audit",
+  },
+};
+const ROUTE_DECISION_FIELD_NAMES = [
+  "route_class",
+  "agentic_runner_layer",
+  "controlled_workflows",
+  "execution_owner",
+  "primary_workflow",
+  "workflow_owners",
+  "artifact_owners",
+  "verification_owners",
+  "handoff_artifacts",
+  "resume_checkpoint",
+  "cross_workflow_completion",
+];
 
 const METACOGNITIVE_GATE_FIELDS = [
   "expected_outcome",
@@ -245,7 +334,8 @@ function main() {
     else if (args.command === "normalize-debugging-integrity") normalizeDebuggingIntegrity(args);
     else if (args.command === "assign") assign(args);
     else if (args.command === "collect") collect(args);
-    else if (args.command === "run" || args.command === "orchestrate") run(args);
+    else if (args.command === "run") run(args);
+    else if (args.command === "orchestrate") orchestrate(args);
     else fail(`unknown command: ${args.command}`, 1);
   } catch (error) {
     fail(error.message, error.exitCode ?? 1);
@@ -290,6 +380,7 @@ function intake(args) {
   const epoch = requireIdentityArg(args.epoch, "--epoch");
   const scope = requireIdentityArg(args.scope, "--scope");
   const metacognitiveGate = classifyMetacognitiveGate({ task, scope }, commandContext.workType);
+  const routeDecision = resolveRouteDecision(args, { task, scope, commandContext });
   const state = resolveWorkflowState(commandContext.targetCwd);
   assertSelfHostStateWriteAllowed(commandContext, "intake");
   prepareStateWrite(state);
@@ -314,6 +405,7 @@ function intake(args) {
     timestamp: new Date().toISOString(),
     gitStatus: readGitStatus(commandContext.targetCwd),
     metacognitiveGate,
+    routeDecision,
   };
 
   for (const [file, body] of Object.entries(renderDocs(context))) {
@@ -328,6 +420,9 @@ function intake(args) {
   console.log(`ok workflow_profile: ${workflowProfileId(commandContext)}`);
   console.log(`ok workflow_domain_contract: ${workflowDomainContractId(commandContext)}`);
   console.log(`ok work_type: ${workTypeId(commandContext)}`);
+  console.log(`ok route_class: ${routeClassId(context)}`);
+  console.log(`ok primary_workflow: ${primaryWorkflowId(context)}`);
+  console.log(`ok workflow_owners: ${formatList(routeDecision.workflowOwners)}`);
   console.log(`ok self_host_target: ${commandContext.selfHostTarget}`);
   console.log(`ok self_host_gate: ${selfHostGateStatus(commandContext)}`);
   console.log(`ok metacognitive_gate_required: ${metacognitiveGate.required}`);
@@ -403,6 +498,26 @@ function run(args) {
   console.log(`ok feature_profile: ${featureProfileId(packet)}`);
   console.log(`ok work_type: ${workTypeId(packet)}`);
   console.log("ok note: real process orchestration is deferred; runner recorded the scoped assignment and skeleton only");
+}
+
+function orchestrate(args) {
+  if (args.runner) {
+    throw new CliError("orchestrate records route/orchestration state only; use run --runner codex-cli for process execution", 1);
+  }
+  const commandContext = resolveCommandContext(args);
+  const packet = requireAssignmentPacket(args, commandContext);
+  assertValidIntakeForPacket(commandContext, packet, "orchestrate");
+
+  appendRunnerEntry(commandContext, "Issued Assignments", renderAssignmentPacket(packet));
+  appendRunnerEntry(commandContext, "Orchestration State", renderOrchestrationState(packet));
+  console.log(`ok orchestration_state: ${packet.role}`);
+  console.log("ok spawned: false");
+  console.log(`ok route_class: ${routeClassId(packet)}`);
+  console.log(`ok primary_workflow: ${primaryWorkflowId(packet)}`);
+  console.log(`ok specialist_owner: ${specialistOwnerId(packet)}`);
+  console.log(`ok feature_profile: ${featureProfileId(packet)}`);
+  console.log(`ok work_type: ${workTypeId(packet)}`);
+  console.log("ok note: orchestration state recorded; process execution remains a separate run --runner action");
 }
 
 function prepareRunnerExecution(commandContext, packet, args) {
@@ -494,6 +609,8 @@ function normalizeCodexResult(packet, context) {
     featureProfile: packet.featureProfile,
     workflowProfile: packet.workflowProfile,
     workType: packet.workType,
+    routeDecision: packet.routeDecision,
+    specialistOwner: packet.specialistOwner,
     hierarchyFields: packet.hierarchyFields,
     supervisionTimingFields: packet.supervisionTimingFields,
     invocationCwd: packet.invocationCwd,
@@ -534,6 +651,12 @@ workflow_profile: ${workflowProfileId(packet)}
 workflow_domain: ${workflowDomainId(packet)}
 workflow_domain_contract: ${workflowDomainContractId(packet)}
 work_type: ${workTypeId(packet)}
+route_class: ${routeClassId(packet)}
+primary_workflow: ${primaryWorkflowId(packet)}
+specialist_owner: ${specialistOwnerId(packet)}
+workflow_owners: ${formatList(packet.routeDecision?.workflowOwners)}
+artifact_owners: ${formatList(packet.routeDecision?.artifactOwners)}
+verification_owners: ${formatList(packet.routeDecision?.verificationOwners)}
 invocation_cwd: ${packet.invocationCwd}
 target_cwd: ${packet.targetCwd}
 assignment: ${packet.assignment}
@@ -547,6 +670,7 @@ Boundaries:
 - Preserve unrelated user or worker changes.
 - Do not commit.
 - Do not edit ~/.codex/plugins/cache directly.
+- Agentic Runner owns the route map, handoff, state, supervision, and final audit; the specialist owner owns the assigned production work and evidence.
 - Do not claim success for unavailable, skipped, or failed checks.
 - ${renderFeatureProfilePromptGuidance(packet)}
 - ${DEBUG_INTEGRITY}
@@ -742,6 +866,7 @@ Read these planning files in order:
 Operational log:
 
 - \`runner.md\`: optional; created by \`assign\`, \`collect\`, or \`run\` only.
+- Route map: Agentic Runner owns routing, handoff, state, supervision, and final audit; specialist workflows own their production artifacts and verification evidence.
 - Subagents are active only for scoped work and must be closed or retired promptly when their result is integrated, blocked, failed, timed out, stale, or no longer needed.
 - ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - ${SUPERVISION_HEARTBEAT}
@@ -771,6 +896,7 @@ function renderProject(context) {
 - workflow_domain: ${workflowDomainId(context)}
 - workflow_domain_contract: ${workflowDomainContractId(context)}
 - work_type: ${workTypeId(context)}
+${renderRouteDecisionFields(context)}
 `;
 }
 
@@ -784,7 +910,15 @@ function renderTask(context) {
 - workflow_domain: ${workflowDomainId(context)}
 - workflow_domain_contract: ${workflowDomainContractId(context)}
 - work_type: ${workTypeId(context)}
+${renderRouteDecisionFields(context)}
 - task: ${context.task}
+
+## Specialist Workflow Route
+
+${renderRouteDecisionFields(context)}
+- agentic_runner_ownership: ${SPECIALIST_WORKFLOW_CONTRACTS["agentic-runner"].owns}
+- primary_workflow_ownership: ${primaryWorkflowOwnership(context)}
+- route_contract: Agentic Runner routes and audits; specialist workflows are not replaced by this state scaffold.
 
 ## ${METACOGNITIVE_GATE_NAME}
 
@@ -804,6 +938,7 @@ ${renderMetacognitiveGateState(context.metacognitiveGate)}
 - Each generated assignment carries lifecycle guidance requiring concise integration material and prompt close/retire handling.
 - Each generated child-worker prompt, assignment, handoff, and runner packet carries the nested Agentic Runner preflight suppression rule.
 - Each generated child-worker prompt, assignment, handoff, and modern runner packet carries the ${SUPERVISION_CONTRACT_NAME}.
+- Route and specialist ownership are recorded before production work begins; Agentic Runner must not degrade into a generic code generator for specialist-owned article, video, or source tasks.
 - Debug or repair work is not complete until root cause is identified, fixed, and verified against the intended outcome.
 - If \`metacognitive_gate_required: true\`, assignments, runner prompts, runner packets, and completed parent-integration packets must carry all metacognitive gate fields.
 - Handoff prompt is available for the next worker.
@@ -838,6 +973,15 @@ function renderDecisions(context) {
 
 - accepted: this MVP writes only target project \`${STATE_DIR_NAME}\` state files.
 - impact: marketplace and plugin cache activation remain out of band.
+
+## D-${context.taskId}-002A Specialist Workflow Route
+
+- accepted: route_class=${routeClassId(context)}, primary_workflow=${primaryWorkflowId(context)}.
+- workflow_owners: ${formatList(context.routeDecision.workflowOwners)}
+- artifact_owners: ${formatList(context.routeDecision.artifactOwners)}
+- verification_owners: ${formatList(context.routeDecision.verificationOwners)}
+- handoff_artifacts: ${formatList(context.routeDecision.handoffArtifacts)}
+- impact: Agentic Runner owns the route map, stateful handoff, supervision, and cross-workflow audit; selected specialist workflows own production artifacts and verification evidence.
 
 ## D-${context.taskId}-003 Subagent Lifecycle Closure
 
@@ -892,6 +1036,7 @@ function renderAudit(context) {
 - workflow_domain: ${workflowDomainId(context)}
 - workflow_domain_contract: ${workflowDomainContractId(context)}
 - work_type: ${workTypeId(context)}
+${renderRouteDecisionFields(context)}
 - self_host_target: ${context.selfHostTarget}
 - self_host_gate: ${context.selfHostGate}
 - agentic_runner_source_git_root: ${context.sourceGitRoot || "unavailable"}
@@ -902,6 +1047,7 @@ function renderAudit(context) {
 ## Pending Audit
 
 - Run implementation checks for the active task.
+- Audit that specialist-owned artifacts and verification were accepted by the declared owner before Agentic Runner closes the cross-workflow route.
 - Record skipped checks with reasons.
 - Record any retire/cancel action with one explicit reason from ${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}.
 - For debug or repair work, record root cause, fix, and verification that the intended outcome now succeeds.
@@ -935,6 +1081,13 @@ These 14 sections are stable validation and routing slots. They are not resident
 - workflow_domain: ${workflowDomainId(context)}
 - workflow_domain_contract: ${workflowDomainContractId(context)}
 - workflow_profile_guidance: ${workflowProfileGuidance(context)}
+${renderRouteDecisionFields(context)}
+
+## Specialist Workflow Route
+
+${renderRouteDecisionFields(context)}
+- agentic_runner_ownership: ${SPECIALIST_WORKFLOW_CONTRACTS["agentic-runner"].owns}
+- route_contract: Agentic Runner coordinates specialist workflows; it does not replace coding-agents, Agentic StructCiv, or CodexVideo.
 
 ## Debugging Integrity Gate
 
@@ -960,6 +1113,7 @@ ${ROLES.map((role) => {
 - task_id: ${context.taskId}
 - epoch: ${context.epoch}
 - scope: ${context.scope}
+${renderRoleRouteFields(context)}
 - assignment: ${assignment}
 - expected_output: ${expectedOutput}
 ${renderSupervisionFields()}
@@ -984,9 +1138,15 @@ You are an Agentic Runner worker for task \`${context.taskId}\`.
 - workflow_domain: ${workflowDomainId(context)}
 - workflow_domain_contract: ${workflowDomainContractId(context)}
 - work_type: ${workTypeId(context)}
+${renderRouteDecisionFields(context)}
 
 Read \`${STATE_DIR_NAME}/README.md\`, then \`project.md\`, \`task.md\`, \`todo.md\`, \`decisions.md\`, \`assignments.md\`, \`audit.md\`, and \`runner.md\` if present.
 Preserve unrelated edits. Work only inside scope. Update \`${STATE_DIR_NAME}/audit.md\` with verification results before handoff.
+
+Specialist workflow route:
+${renderRouteDecisionFields(context)}
+- agentic_runner_ownership: ${SPECIALIST_WORKFLOW_CONTRACTS["agentic-runner"].owns}
+- specialist_contract: Use the primary workflow for specialist-owned production, then return evidence to Agentic Runner for stateful handoff and cross-workflow audit.
 
 Nested Agentic Runner preflight:
 - ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
@@ -1389,6 +1549,7 @@ function insertAfterLineMatching(text, pattern, block, fallback) {
 }
 
 function requireAssignmentPacket(args, commandContext) {
+  const routeDecision = resolvePacketRouteDecision(commandContext);
   const packet = {
     type: "assignment",
     timestamp: new Date().toISOString(),
@@ -1400,6 +1561,8 @@ function requireAssignmentPacket(args, commandContext) {
     featureProfile: resolveFeatureProfile(args.featureProfile),
     workflowProfile: resolvePacketWorkflowProfile(commandContext),
     workType: commandContext.workType,
+    routeDecision,
+    specialistOwner: resolveSpecialistOwner(args.specialistOwner, routeDecision),
     hierarchyFields: resolveHierarchyFields(args),
     supervisionTimingFields: resolveSupervisionTimingFields(args),
     invocationCwd: commandContext.invocationCwd,
@@ -1415,6 +1578,7 @@ function requireAssignmentPacket(args, commandContext) {
 }
 
 function requireIntegrationPacket(args, commandContext) {
+  const routeDecision = resolvePacketRouteDecision(commandContext);
   const packet = {
     type: "parent-integration",
     timestamp: new Date().toISOString(),
@@ -1426,6 +1590,8 @@ function requireIntegrationPacket(args, commandContext) {
     featureProfile: resolveFeatureProfile(args.featureProfile),
     workflowProfile: resolvePacketWorkflowProfile(commandContext),
     workType: commandContext.workType,
+    routeDecision,
+    specialistOwner: resolveSpecialistOwner(args.specialistOwner, routeDecision),
     hierarchyFields: resolveHierarchyFields(args),
     supervisionTimingFields: resolveSupervisionTimingFields(args),
     invocationCwd: commandContext.invocationCwd,
@@ -1680,6 +1846,7 @@ function renderAssignmentPacket(packet) {
 - workflow_domain: ${workflowDomainId(packet)}
 - workflow_domain_contract: ${workflowDomainContractId(packet)}
 - work_type: ${workTypeId(packet)}
+${renderPacketRouteFields(packet)}
 - invocation_cwd: ${packet.invocationCwd}
 - target_cwd: ${packet.targetCwd}
 - assignment: ${packet.assignment}
@@ -1706,6 +1873,7 @@ function renderIntegrationPacket(packet) {
 - workflow_domain: ${workflowDomainId(packet)}
 - workflow_domain_contract: ${workflowDomainContractId(packet)}
 - work_type: ${workTypeId(packet)}
+${renderPacketRouteFields(packet)}
 - invocation_cwd: ${packet.invocationCwd}
 - target_cwd: ${packet.targetCwd}
 - findings: ${packet.findings}
@@ -1737,12 +1905,46 @@ function renderOrchestrationSkeleton(packet) {
 - workflow_domain: ${workflowDomainId(packet)}
 - workflow_domain_contract: ${workflowDomainContractId(packet)}
 - work_type: ${workTypeId(packet)}
+${renderPacketRouteFields(packet)}
 - invocation_cwd: ${packet.invocationCwd}
 - target_cwd: ${packet.targetCwd}
 - assignment: ${packet.assignment}
 - expected_output: ${packet.expectedOutput}
 - spawned: false
 - next: hand this assignment packet to an available subagent mechanism outside this MVP CLI
+${renderFeatureProfilePacketGuidance(packet)}
+- nested_agentic_runner_preflight: ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
+- debugging_integrity: ${DEBUG_INTEGRITY}
+${renderSupervisionFields(packet)}
+${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
+- lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
+}
+
+function renderOrchestrationState(packet) {
+  return `### ${packet.timestamp} ${packet.role} ${packet.taskId}
+
+- type: orchestration-state
+- role: ${packet.role}
+- status: routed
+- task_id: ${packet.taskId}
+- epoch: ${packet.epoch}
+- scope: ${packet.scope}
+- feature_profile: ${featureProfileId(packet)}
+- workflow_profile: ${workflowProfileId(packet)}
+- workflow_domain: ${workflowDomainId(packet)}
+- workflow_domain_contract: ${workflowDomainContractId(packet)}
+- work_type: ${workTypeId(packet)}
+${renderPacketRouteFields(packet)}
+- invocation_cwd: ${packet.invocationCwd}
+- target_cwd: ${packet.targetCwd}
+- current_specialist: ${specialistOwnerId(packet)}
+- next_specialist: ${nextSpecialist(packet)}
+- assignment: ${packet.assignment}
+- expected_output: ${packet.expectedOutput}
+- spawned: false
+- stop_condition: specialist-owned verification is missing, stale, blocked, or outside scope
+- cross_workflow_audit: ${packet.routeDecision.crossWorkflowCompletion}
+- next: route this packet to ${specialistOwnerLabel(packet)} and return evidence to Agentic Runner for handoff and audit
 ${renderFeatureProfilePacketGuidance(packet)}
 - nested_agentic_runner_preflight: ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - debugging_integrity: ${DEBUG_INTEGRITY}
@@ -1765,6 +1967,7 @@ function renderRunnerResult(result) {
 - workflow_domain: ${workflowDomainId(result)}
 - workflow_domain_contract: ${workflowDomainContractId(result)}
 - work_type: ${workTypeId(result)}
+${renderPacketRouteFields(result)}
 - invocation_cwd: ${result.invocationCwd}
 - target_cwd: ${result.targetCwd}
 - runner: ${result.runner}
@@ -1793,9 +1996,10 @@ function appendRunnerEntry(commandContext, heading, entry) {
   const runnerPath = path.join(state.stateDir, RUNNER_FILE);
   const initial = `# Agentic Runner Operations
 
-This file records CLI-issued assignments, parent-integration packets, process-orchestration skeletons, and process runner results.
+This file records CLI-issued assignments, parent-integration packets, control-plane orchestration state, process-orchestration skeletons, and process runner results.
 Subagents are closed or retired after integration, timeout/failure/blocker handling, stale premise/scope change, or final report when no further use is expected.
 ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
+Agentic Runner is the upper control-plane for routing, handoff, supervision, resume checkpoints, and final cross-workflow audit; specialist workflows own subordinate execution evidence.
 ${renderSupervisionFields()}
 ${DEBUG_INTEGRITY}
 ${METACOGNITIVE_GATE_CONTRACT}
@@ -1831,6 +2035,7 @@ function validateAssignmentFiles(stateDir) {
   const assignmentPath = path.join(stateDir, "assignments.md");
   const workflowGate = readWorkflowMetacognitiveContext(stateDir);
   const identity = readWorkflowTaskIdentity(stateDir);
+  const routeRequired = workflowStateHasRouteDecision(stateDir);
 
   if (!existsSync(stateDir)) {
     return { results: [["warn", `missing workflow state directory: ${stateDir}`]], fatal: true };
@@ -1845,10 +2050,14 @@ function validateAssignmentFiles(stateDir) {
   results.push(...workflowProfileValidation.results);
   fatal = fatal || workflowProfileValidation.fatal;
 
+  const routeDecisionValidation = validateRouteDecisionState(stateDir);
+  results.push(...routeDecisionValidation.results);
+  fatal = fatal || routeDecisionValidation.fatal;
+
   if (existsSync(assignmentPath)) {
     checkedFiles += 1;
     const text = readFileSync(assignmentPath, "utf8");
-    const roleValidation = validateRoleAssignments(text, workflowGate);
+    const roleValidation = validateRoleAssignments(text, workflowGate, { routeRequired });
     results.push(...roleValidation.results);
     fatal = fatal || roleValidation.fatal;
   }
@@ -1856,7 +2065,7 @@ function validateAssignmentFiles(stateDir) {
   const runnerPath = path.join(stateDir, RUNNER_FILE);
   if (existsSync(runnerPath)) {
     checkedFiles += 1;
-    const runnerValidation = validateRunnerPackets(readFileSync(runnerPath, "utf8"), workflowGate);
+    const runnerValidation = validateRunnerPackets(readFileSync(runnerPath, "utf8"), workflowGate, { routeRequired });
     results.push(...runnerValidation.results);
     fatal = fatal || runnerValidation.fatal;
   }
@@ -1883,13 +2092,107 @@ function validateWorkflowProfileState(stateDir) {
   return { results: [["ok", `workflow_profile present in task.md (${workflowProfile})`]], fatal: false };
 }
 
-function validateRoleAssignments(text, workflowGate = { required: false }) {
+function validateRouteDecisionState(stateDir) {
+  const taskPath = path.join(stateDir, "task.md");
+  if (!existsSync(taskPath)) return { results: [], fatal: false };
+  const text = readFileSync(taskPath, "utf8");
+  const routeClass = getFieldValue(text, "route_class");
+  if (!routeClass) return { results: [], fatal: false };
+  const primaryWorkflow = getFieldValue(text, "primary_workflow");
+  const errors = validateRouteDecisionFields(text, "task.md", { requireSpecialistOwner: false });
+  if (errors.length) {
+    return {
+      results: [["warn", errors.join(", ")]],
+      fatal: true,
+    };
+  }
+  return {
+    results: [["ok", `route decision present in task.md (${routeClass} -> ${primaryWorkflow || ROUTE_CLASS_CONTRACTS[routeClass].primaryWorkflow})`]],
+    fatal: false,
+  };
+}
+
+function workflowStateHasRouteDecision(stateDir) {
+  const taskPath = path.join(stateDir, "task.md");
+  if (!existsSync(taskPath)) return false;
+  return Boolean(getFieldValue(readFileSync(taskPath, "utf8"), "route_class"));
+}
+
+function validateRouteDecisionFields(section, label, options = {}) {
+  const requireSpecialistOwner = Boolean(options.requireSpecialistOwner);
+  const errors = [];
+  const routeClass = getFieldValue(section, "route_class");
+  if (!routeClass) {
+    errors.push(`${label}.route_class`);
+    return errors;
+  }
+  if (!isKnownRouteClassId(routeClass)) {
+    errors.push(`${label}.route_class unknown (${routeClass})`);
+    return errors;
+  }
+
+  const controlLayer = getFieldValue(section, "agentic_runner_layer");
+  if (!controlLayer) errors.push(`${label}.agentic_runner_layer`);
+  else if (controlLayer !== "control-plane") {
+    errors.push(`${label}.agentic_runner_layer invalid (${controlLayer})`);
+  }
+
+  const primaryWorkflow = getFieldValue(section, "primary_workflow");
+  if (!primaryWorkflow) errors.push(`${label}.primary_workflow`);
+  else {
+    if (!isKnownSpecialistWorkflowId(primaryWorkflow)) errors.push(`${label}.primary_workflow unknown (${primaryWorkflow})`);
+    else if (!ROUTE_CLASS_CONTRACTS[routeClass].workflowOwners.includes(primaryWorkflow)) {
+      errors.push(`${label}.primary_workflow invalid for ${routeClass} (${primaryWorkflow})`);
+    }
+  }
+
+  const executionOwner = getFieldValue(section, "execution_owner");
+  if (!executionOwner) errors.push(`${label}.execution_owner`);
+  else if (!isKnownSpecialistWorkflowId(executionOwner)) errors.push(`${label}.execution_owner unknown (${executionOwner})`);
+  else if (!ROUTE_CLASS_CONTRACTS[routeClass].workflowOwners.includes(executionOwner)) {
+    errors.push(`${label}.execution_owner invalid for ${routeClass} (${executionOwner})`);
+  }
+
+  const specialistOwner = getFieldValue(section, "specialist_owner");
+  if (requireSpecialistOwner) {
+    if (!specialistOwner) errors.push(`${label}.specialist_owner`);
+    else if (!isKnownSpecialistWorkflowId(specialistOwner)) errors.push(`${label}.specialist_owner unknown (${specialistOwner})`);
+    else if (!ROUTE_CLASS_CONTRACTS[routeClass].workflowOwners.includes(specialistOwner)) {
+      errors.push(`${label}.specialist_owner invalid for ${routeClass} (${specialistOwner})`);
+    }
+  }
+
+  for (const field of ["controlled_workflows", "workflow_owners", "artifact_owners", "verification_owners"]) {
+    const values = splitList(getFieldValue(section, field));
+    if (!values.length) {
+      errors.push(`${label}.${field}`);
+      continue;
+    }
+    for (const value of values) {
+      if (!isKnownSpecialistWorkflowId(value)) errors.push(`${label}.${field} unknown (${value})`);
+    }
+  }
+
+  for (const field of ["handoff_artifacts", "resume_checkpoint", "cross_workflow_completion"]) {
+    if (!getFieldValue(section, field)) errors.push(`${label}.${field}`);
+  }
+
+  const layerBoundary = getFieldValue(section, "layer_boundary");
+  if (requireSpecialistOwner && (!layerBoundary || !/above coding-agents/i.test(layerBoundary))) {
+    errors.push(`${label}.layer_boundary`);
+  }
+
+  return errors;
+}
+
+function validateRoleAssignments(text, workflowGate = { required: false }, options = {}) {
   const results = [];
   let fatal = false;
   const missingRoles = ROLES.filter((role) => !new RegExp(`^## ${escapeRegExp(role)}$`, "m").test(text));
   const invalidFields = [];
   const invalidSupervisionFields = [];
   const invalidMetacognitiveFields = [];
+  const invalidRouteFields = [];
 
   for (const role of ROLES) {
     const section = getRoleSection(text, role);
@@ -1903,6 +2206,11 @@ function validateRoleAssignments(text, workflowGate = { required: false }) {
     }
     const supervision = validateSupervisionContractFields(section);
     for (const missing of supervision.missing) invalidSupervisionFields.push(`${role}.${missing}`);
+    if (options.routeRequired) {
+      for (const routeError of validateRouteDecisionFields(section, role, { requireSpecialistOwner: false })) {
+        invalidRouteFields.push(routeError);
+      }
+    }
     if (workflowGate.required) {
       const roleGate = validateMetacognitiveGateText(section);
       for (const missing of roleGate.missing) invalidMetacognitiveFields.push(`${role}.${missing}`);
@@ -1925,6 +2233,14 @@ function validateRoleAssignments(text, workflowGate = { required: false }) {
   else {
     results.push(["warn", `missing or incomplete supervision assignment fields: ${invalidSupervisionFields.join(", ")}`]);
     fatal = true;
+  }
+
+  if (options.routeRequired) {
+    if (invalidRouteFields.length === 0) results.push(["ok", "route control-plane fields present in assignments"]);
+    else {
+      results.push(["warn", `missing or invalid route assignment fields: ${invalidRouteFields.join(", ")}`]);
+      fatal = true;
+    }
   }
 
   if (text.includes(DEBUG_INTEGRITY)) results.push(["ok", "debugging integrity gate present"]);
@@ -1951,16 +2267,17 @@ function validateRoleAssignments(text, workflowGate = { required: false }) {
   return { results, fatal };
 }
 
-function validateRunnerPackets(text, workflowGate = { required: false }) {
+function validateRunnerPackets(text, workflowGate = { required: false }, options = {}) {
   const sections = getModernRunnerPacketSections(text);
   const invalidPackets = [];
+  const invalidRoutePackets = [];
   const invalidSupervisionPackets = [];
   const invalidMetacognitivePackets = [];
   let checked = 0;
 
   for (const section of sections) {
     const type = getFieldValue(section, "type");
-    if (!["assignment", "parent-integration", "process-orchestration-skeleton", "process-runner-result"].includes(type)) continue;
+    if (!["assignment", "parent-integration", "process-orchestration-skeleton", "orchestration-state", "process-runner-result"].includes(type)) continue;
     checked += 1;
     for (const field of ["role", "task_id", "epoch", "scope"]) {
       if (field === "role" && !getFieldValue(section, field)) {
@@ -1991,6 +2308,13 @@ function validateRunnerPackets(text, workflowGate = { required: false }) {
         }
       }
     }
+    if (type === "orchestration-state") {
+      for (const field of ["assignment", "expected_output", "current_specialist", "next_specialist", "stop_condition", "cross_workflow_audit", "debugging_integrity", "lifecycle"]) {
+        if (!getFieldValue(section, field)) {
+          invalidPackets.push(`${section.split("\n")[0].replace(/^### /, "")}.${field}`);
+        }
+      }
+    }
     if (type === "parent-integration") {
       for (const field of ["status", "debugging_integrity", "lifecycle"]) {
         if (!getFieldValue(section, field)) {
@@ -2009,6 +2333,12 @@ function validateRunnerPackets(text, workflowGate = { required: false }) {
     if (runnerPacketRequiresSupervision(section)) {
       const supervision = validateSupervisionContractFields(section);
       for (const missing of supervision.missing) invalidSupervisionPackets.push(`${packetLabel(section)}.${missing}`);
+    }
+
+    if (options.routeRequired && !runnerPacketUsesLegacySchema(section)) {
+      for (const routeError of validateRouteDecisionFields(section, packetLabel(section), { requireSpecialistOwner: true })) {
+        invalidRoutePackets.push(routeError);
+      }
     }
 
     const packetGate = runnerPacketMetacognitiveRequired(section, workflowGate);
@@ -2030,11 +2360,12 @@ function validateRunnerPackets(text, workflowGate = { required: false }) {
     }
   }
 
-  if (invalidPackets.length === 0 && invalidSupervisionPackets.length === 0 && invalidMetacognitivePackets.length === 0) {
+  if (invalidPackets.length === 0 && invalidRoutePackets.length === 0 && invalidSupervisionPackets.length === 0 && invalidMetacognitivePackets.length === 0) {
     return { results: [["ok", `runner packets valid (${checked} checked)`]], fatal: false };
   }
   const results = [];
   if (invalidPackets.length) results.push(["warn", `missing or empty runner packet fields: ${invalidPackets.join(", ")}`]);
+  if (invalidRoutePackets.length) results.push(["warn", `missing or invalid route runner packet fields: ${invalidRoutePackets.join(", ")}`]);
   if (invalidSupervisionPackets.length) {
     results.push(["warn", `missing or incomplete supervision runner packet fields: ${invalidSupervisionPackets.join(", ")}`]);
   }
@@ -2583,6 +2914,14 @@ function renderFieldLines(fields) {
     .join("\n");
 }
 
+function formatList(values) {
+  return Array.isArray(values) && values.length ? values.join(", ") : "none";
+}
+
+function uniqueList(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function renderMetacognitiveGatePacketSchema(gate) {
   if (!gate?.required) return "";
   const lines = [
@@ -2809,6 +3148,12 @@ function resolveCommandContext(args) {
   if (args.workflowProfile && args.command !== "intake") {
     throw new CliError("--workflow-profile is only supported for intake; runner packets inherit workflow_profile from current state", 1);
   }
+  if ((args.routeClass || args.primaryWorkflow) && args.command !== "intake") {
+    throw new CliError("--route-class and --primary-workflow are only supported for intake; runner packets inherit route state from current state", 1);
+  }
+  if (args.specialistOwner && !["assign", "collect", "run", "orchestrate"].includes(args.command)) {
+    throw new CliError("--specialist-owner is only supported for assign, collect, run, or orchestrate packets", 1);
+  }
   const invocationCwd = args.cwd ? requireDirectory(args.cwd, "--cwd") : requireDirectory(process.cwd(), "process cwd");
   const targetCwd = args.targetCwd ? requireDirectory(args.targetCwd, "--target-cwd") : invocationCwd;
   const targetGitRoot = resolveGitRoot(targetCwd);
@@ -3023,6 +3368,222 @@ function readWorkflowProfileContext(stateDir) {
   return resolveWorkflowProfile(getFieldValue(text, "workflow_profile") || DEFAULT_WORKFLOW_PROFILE);
 }
 
+function resolveRouteDecision(args = {}, context = {}) {
+  const routeClass = resolveRouteClass(args.routeClass, context);
+  const primaryWorkflow = resolvePrimaryWorkflow(args.primaryWorkflow, routeClass);
+  return routeDecisionFromContract(routeClass, primaryWorkflow);
+}
+
+function resolveRouteClass(value, context = {}) {
+  const id = value === undefined || value === null || !String(value).trim()
+    ? inferRouteClass(context)
+    : singleLine(value);
+  if (!isKnownRouteClassId(id)) {
+    throw new CliError(`unknown route class: ${id}; expected one of ${knownRouteClassIds().join(", ")}`, 1);
+  }
+  return id;
+}
+
+function inferRouteClass(context = {}) {
+  const text = [
+    context.task,
+    context.scope,
+    workflowProfileId(context.commandContext),
+    workTypeId(context.commandContext),
+  ].filter(Boolean).join("\n");
+  const signals = new Set();
+
+  if (/\b(?:video|short(?:s)?|youtube|remotion|tts|voice|narration|subtitle|caption|movie|source-to-video)\b|動画|ショート|声|音声|字幕|ナレーション/i.test(text)) {
+    signals.add("video");
+  }
+  if (/\b(?:article|blog|wordpress|swell|seo|post|draft|copywriting|manuscript)\b|記事|原稿|ブログ|構成案|下書き|本文/i.test(text)) {
+    signals.add("article");
+  }
+  if (/\b(?:code|coding|debug|bug|fix|implementation|source|repo|repository|test|cli|tool|script|refactor)\b|コード|実装|修正|デバッグ|テスト|ツール|不具合/i.test(text)) {
+    signals.add("coding");
+  }
+  if (
+    workflowProfileId(context.commandContext) === "plugin-source"
+    || (/\bplugin\b/i.test(text) && /\b(?:source|cache|runtime|activation|metadata|skill|mcp)\b/i.test(text))
+    || (/プラグイン/.test(text) && /(?:正本|cache|runtime|反映|skill)/i.test(text))
+  ) {
+    signals.add("plugin-source");
+  }
+  if (workTypeId(context.commandContext) === "source-change" || workTypeId(context.commandContext) === "debug") {
+    signals.add("coding");
+  }
+
+  if (signals.size === 0) return DEFAULT_ROUTE_CLASS;
+  const explicitArticle = /\b(?:article|blog|wordpress|swell|seo|post|draft|copywriting)\b|記事|ブログ|WordPress|SWELL|SEO/i.test(text);
+  if (signals.has("video") && !signals.has("coding") && !explicitArticle) return "video";
+  if (signals.has("plugin-source") && signals.size === 2 && signals.has("coding")) return "plugin-source";
+  if (signals.size === 1) return [...signals][0];
+  return "mixed";
+}
+
+function resolvePrimaryWorkflow(value, routeClass) {
+  const contract = ROUTE_CLASS_CONTRACTS[routeClass];
+  const id = value === undefined || value === null || !String(value).trim()
+    ? contract.primaryWorkflow
+    : singleLine(value);
+  if (!isKnownSpecialistWorkflowId(id)) {
+    throw new CliError(`unknown primary workflow: ${id}; expected one of ${knownSpecialistWorkflowIds().join(", ")}`, 1);
+  }
+  if (!contract.workflowOwners.includes(id)) {
+    throw new CliError(`primary workflow ${id} is not valid for route_class ${routeClass}; expected one of ${contract.workflowOwners.join(", ")}`, 1);
+  }
+  return id;
+}
+
+function routeDecisionFromContract(routeClass, primaryWorkflow, contract = ROUTE_CLASS_CONTRACTS[routeClass]) {
+  return {
+    routeClass,
+    agenticRunnerLayer: "control-plane",
+    primaryWorkflow,
+    executionOwner: primaryWorkflow,
+    workflowOwners: uniqueList([primaryWorkflow, ...contract.workflowOwners]),
+    artifactOwners: [...contract.artifactOwners],
+    verificationOwners: [...contract.verificationOwners],
+    handoffArtifacts: [...contract.handoffArtifacts],
+    resumeCheckpoint: contract.resumeCheckpoint,
+    crossWorkflowCompletion: contract.crossWorkflowCompletion,
+  };
+}
+
+function resolvePacketRouteDecision(commandContext) {
+  const state = resolveWorkflowState(commandContext.targetCwd);
+  return readRouteDecisionContext(state.stateDir);
+}
+
+function readRouteDecisionContext(stateDir) {
+  const taskPath = path.join(stateDir, "task.md");
+  if (!existsSync(taskPath)) return defaultRouteDecision();
+  const text = readFileSync(taskPath, "utf8");
+  const routeClass = getFieldValue(text, "route_class");
+  if (!routeClass) return defaultRouteDecision();
+  const primaryWorkflow = getFieldValue(text, "primary_workflow") || ROUTE_CLASS_CONTRACTS[routeClass]?.primaryWorkflow;
+  const decision = routeDecisionFromContract(
+    resolveRouteClass(routeClass),
+    resolvePrimaryWorkflow(primaryWorkflow, routeClass),
+  );
+  for (const [property, field] of Object.entries({
+    workflowOwners: "workflow_owners",
+    artifactOwners: "artifact_owners",
+    verificationOwners: "verification_owners",
+    handoffArtifacts: "handoff_artifacts",
+  })) {
+    const values = splitList(getFieldValue(text, field));
+    if (values.length) decision[property] = values;
+  }
+  decision.resumeCheckpoint = getFieldValue(text, "resume_checkpoint") || decision.resumeCheckpoint;
+  decision.crossWorkflowCompletion = getFieldValue(text, "cross_workflow_completion") || decision.crossWorkflowCompletion;
+  return decision;
+}
+
+function defaultRouteDecision() {
+  return routeDecisionFromContract(DEFAULT_ROUTE_CLASS, DEFAULT_PRIMARY_WORKFLOW);
+}
+
+function resolveSpecialistOwner(value, routeDecision = defaultRouteDecision()) {
+  if (value === undefined || value === null || !String(value).trim()) {
+    if (routeDecision.routeClass === "mixed") {
+      throw new CliError(`--specialist-owner is required for route_class mixed; expected one of ${routeDecision.workflowOwners.join(", ")}`, 1);
+    }
+    return routeDecision.primaryWorkflow;
+  }
+  const id = singleLine(value);
+  if (!isKnownSpecialistWorkflowId(id)) {
+    throw new CliError(`unknown specialist owner: ${id}; expected one of ${knownSpecialistWorkflowIds().join(", ")}`, 1);
+  }
+  if (!routeDecision.workflowOwners.includes(id)) {
+    throw new CliError(`specialist owner ${id} is not valid for route_class ${routeDecision.routeClass}; expected one of ${routeDecision.workflowOwners.join(", ")}`, 1);
+  }
+  return id;
+}
+
+function routeClassId(packet) {
+  return packet?.routeDecision?.routeClass || DEFAULT_ROUTE_CLASS;
+}
+
+function primaryWorkflowId(packet) {
+  return packet?.routeDecision?.primaryWorkflow || DEFAULT_PRIMARY_WORKFLOW;
+}
+
+function specialistOwnerId(packet) {
+  return packet?.specialistOwner || primaryWorkflowId(packet);
+}
+
+function specialistOwnerLabel(packet) {
+  return SPECIALIST_WORKFLOW_CONTRACTS[specialistOwnerId(packet)]?.label || specialistOwnerId(packet);
+}
+
+function primaryWorkflowOwnership(packet) {
+  return SPECIALIST_WORKFLOW_CONTRACTS[primaryWorkflowId(packet)]?.owns || "unknown";
+}
+
+function nextSpecialist(packet) {
+  if (routeClassId(packet) !== "mixed") return "agentic-runner audit";
+  return packet.routeDecision.workflowOwners.filter((owner) => owner !== specialistOwnerId(packet)).join(", ") || "agentic-runner audit";
+}
+
+function renderRouteDecisionFields(source = {}) {
+  const routeDecision = source.routeDecision || defaultRouteDecision();
+  return `- route_class: ${routeDecision.routeClass}
+- agentic_runner_layer: ${routeDecision.agenticRunnerLayer || "control-plane"}
+- controlled_workflows: ${formatList(routeDecision.workflowOwners)}
+- execution_owner: ${routeDecision.executionOwner || routeDecision.primaryWorkflow}
+- primary_workflow: ${routeDecision.primaryWorkflow}
+- workflow_owners: ${formatList(routeDecision.workflowOwners)}
+- artifact_owners: ${formatList(routeDecision.artifactOwners)}
+- verification_owners: ${formatList(routeDecision.verificationOwners)}
+- handoff_artifacts: ${formatList(routeDecision.handoffArtifacts)}
+- resume_checkpoint: ${routeDecision.resumeCheckpoint}
+- cross_workflow_completion: ${routeDecision.crossWorkflowCompletion}`;
+}
+
+function renderRoleRouteFields(source = {}) {
+  const routeDecision = source.routeDecision || defaultRouteDecision();
+  return `${renderRouteDecisionFields({ routeDecision })}
+- route_layer: Agentic Runner is the upper orchestration layer; specialist workflows are execution layers.
+- route_contract: Agentic Runner owns routing, handoff, state, supervision, and audit; specialist workflows own production and verification evidence.`;
+}
+
+function renderPacketRouteFields(packet = {}) {
+  const routeDecision = packet.routeDecision || defaultRouteDecision();
+  return `- route_class: ${routeDecision.routeClass}
+- agentic_runner_layer: ${routeDecision.agenticRunnerLayer || "control-plane"}
+- controlled_workflows: ${formatList(routeDecision.workflowOwners)}
+- execution_owner: ${specialistOwnerId(packet)}
+- primary_workflow: ${routeDecision.primaryWorkflow}
+- workflow_owners: ${formatList(routeDecision.workflowOwners)}
+- artifact_owners: ${formatList(routeDecision.artifactOwners)}
+- verification_owners: ${formatList(routeDecision.verificationOwners)}
+- handoff_artifacts: ${formatList(routeDecision.handoffArtifacts)}
+- resume_checkpoint: ${routeDecision.resumeCheckpoint}
+- cross_workflow_completion: ${routeDecision.crossWorkflowCompletion}
+- specialist_owner: ${specialistOwnerId(packet)}
+- specialist_owner_label: ${specialistOwnerLabel(packet)}
+- specialist_ownership: ${SPECIALIST_WORKFLOW_CONTRACTS[specialistOwnerId(packet)]?.owns || "unknown"}
+- agentic_runner_ownership: ${SPECIALIST_WORKFLOW_CONTRACTS["agentic-runner"].owns}
+- layer_boundary: Agentic Runner operates above coding-agents, Agentic StructCiv, and CodexVideo; it routes, supervises, resumes, and audits them instead of duplicating their specialist execution.`;
+}
+
+function isKnownRouteClassId(id) {
+  return Object.prototype.hasOwnProperty.call(ROUTE_CLASS_CONTRACTS, id);
+}
+
+function knownRouteClassIds() {
+  return Object.keys(ROUTE_CLASS_CONTRACTS);
+}
+
+function isKnownSpecialistWorkflowId(id) {
+  return Object.prototype.hasOwnProperty.call(SPECIALIST_WORKFLOW_CONTRACTS, id);
+}
+
+function knownSpecialistWorkflowIds() {
+  return Object.keys(SPECIALIST_WORKFLOW_CONTRACTS);
+}
+
 function isKnownWorkTypeId(id) {
   return Object.prototype.hasOwnProperty.call(WORK_TYPE_GUIDANCE, id);
 }
@@ -3105,10 +3666,11 @@ function printHelp() {
   console.log(`agentic-runner MVP CLI
 
 Usage:
-  node bin/agentic-runner.mjs intake [--cwd <path>] [--target-cwd <path>] [--workflow-profile <id>] [--work-type <id>] --task <text> --task-id <id> --epoch <epoch> --scope <scope>
-  node bin/agentic-runner.mjs assign [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text>
-  node bin/agentic-runner.mjs collect [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] --status <status> [--findings <text>] [--changed-files <text>] [--verification <text>] [--blockers <text>] [--assumptions <text>] [--next <text>] [--expected-outcome <text>] [--actual-result <text>] [--reproduction-or-evidence <text>] [--failure-point <text>] [--hypothesis-branches <text>] [--source-of-truth-boundary <text>] [--plugin-contract-boundary <text>] [--generated-artifact-boundary <text>] [--before-context-effects <text>] [--after-context-effects <text>] [--cross-feature-consequences <text>] [--root-cause <text>] [--fix-summary <text>] [--verification-evidence <text>] [--skipped-checks <text>] [--unresolved-risks <text>] [--next-investigation <text>]
-  node bin/agentic-runner.mjs run|orchestrate [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text> [--runner codex-cli] [--timeout-ms <ms>]
+  node bin/agentic-runner.mjs intake [--cwd <path>] [--target-cwd <path>] [--workflow-profile <id>] [--work-type <id>] [--route-class <id>] [--primary-workflow <id>] --task <text> --task-id <id> --epoch <epoch> --scope <scope>
+  node bin/agentic-runner.mjs assign [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text>
+  node bin/agentic-runner.mjs collect [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] [--specialist-owner <id>] --status <status> [--findings <text>] [--changed-files <text>] [--verification <text>] [--blockers <text>] [--assumptions <text>] [--next <text>] [--expected-outcome <text>] [--actual-result <text>] [--reproduction-or-evidence <text>] [--failure-point <text>] [--hypothesis-branches <text>] [--source-of-truth-boundary <text>] [--plugin-contract-boundary <text>] [--generated-artifact-boundary <text>] [--before-context-effects <text>] [--after-context-effects <text>] [--cross-feature-consequences <text>] [--root-cause <text>] [--fix-summary <text>] [--verification-evidence <text>] [--skipped-checks <text>] [--unresolved-risks <text>] [--next-investigation <text>]
+  node bin/agentic-runner.mjs run [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text> [--runner codex-cli] [--timeout-ms <ms>]
+  node bin/agentic-runner.mjs orchestrate [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--feature-profile <id>] [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text>
   node bin/agentic-runner.mjs verify-assignments [--cwd <path>] [--target-cwd <path>]
   node bin/agentic-runner.mjs normalize-debugging-integrity [--cwd <path>] [--target-cwd <path>] [--execute]
   node bin/agentic-runner.mjs handoff [--cwd <path>] [--target-cwd <path>] --task-id <id>
@@ -3119,8 +3681,9 @@ Commands:
   intake   Create or update target .agentic-runner workflow files.
   assign   Record a scoped specialist assignment in .agentic-runner/runner.md.
   collect  Record a parent-integration packet returned by a specialist.
-  run/orchestrate
-           Record an assignment and orchestration skeleton by default; with --runner codex-cli, spawn codex exec and record normalized results.
+  run      Record an assignment and orchestration skeleton by default; with --runner codex-cli, spawn codex exec and record normalized results.
+  orchestrate
+           Record control-plane route/orchestration state only. It never accepts --runner.
   verify-assignments
            Block missing or empty task_id, epoch, scope, lifecycle, supervision, or debugging_integrity fields in assignments and modern runner packets.
   normalize-debugging-integrity
@@ -3137,7 +3700,12 @@ State:
   Existing docs/codex directories are migration input or hints only; they are never operational state fallback or write targets.
   State writes add .agentic-runner/ to .git/info/exclude; .gitignore is not edited.
   Self-host gate: Agentic Runner source edits are external-supervised by default. When the target git root is the Agentic Runner source repository, state-writing commands require explicit --target-cwd and report self_host_gate in generated project/audit state. This does not authorize commits, cache refresh, activation, destructive actions, or scope expansion.
-  Generated assignments, handoff prompts, and runner packets carry lifecycle closure, supervision, and debugging integrity rules.
+  Generated assignments, handoff prompts, and runner packets carry lifecycle closure, supervision, route control-plane boundaries, and debugging integrity rules.
+  Agentic Runner is the upper control-plane. It owns route classification, controlled workflow selection, handoff, supervision, resume checkpoints, and final cross-workflow audit. It does not replace specialist execution workflows.
+  Route classes are ${knownRouteClassIds().join(", ")}. Controlled workflow ids are ${knownSpecialistWorkflowIds().join(", ")}.
+  coding-agents, Agentic StructCiv, and CodexVideo are subordinate execution workflows controlled through route packets; they are not peer Agentic Runner identities.
+  Intake writes route_class, agentic_runner_layer: control-plane, controlled_workflows, execution_owner, handoff_artifacts, resume_checkpoint, and cross_workflow_completion into state. Runner packets inherit this route state.
+  Mixed routes require --specialist-owner on assign, collect, run, and orchestrate packets so the subordinate execution owner is explicit.
   Parent-managed child-worker prompts also suppress nested Agentic Runner preflight; child workers do not ask \`agentic-runner を使いますか？ [Y/n]\` or start independent nested Agentic Runner workflows inside an assigned task_id/epoch/scope. Descendant delegation is allowed only when finite hierarchy fields grant remaining_depth > 0 and inherited supervision is preserved.
   Supervision treats silence before heartbeat deadline as neutral, forbids cancel/interrupt/retire/replace during the no-interrupt window, treats heartbeat as telemetry rather than completion evidence, requires explicit retire/cancel reasons (${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}), and uses missed heartbeat -> soft ping/status request -> grace wait -> stale mark before cancel/replace.
   Optional --feature-profile overlays provide scoped assignment guidance only. Known ids: ${knownFeatureProfileIds().join(", ")}.

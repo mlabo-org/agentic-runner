@@ -655,7 +655,7 @@ test("assign and run skeletons carry the metacognitive gate for gate-required wo
 
     const runner = readState(repo, "runner.md");
     assert.match(runner, /type: assignment/);
-    assert.match(runner, /type: process-orchestration-skeleton/);
+    assert.match(runner, /type: orchestration-state/);
     assert.match(runner, /metacognitive_gate_required: true/);
     assert.match(runner, /metacognitive_gate_completion_prompt:/);
     assert.doesNotMatch(runner, /before_context_effects: required before completed collection/);
