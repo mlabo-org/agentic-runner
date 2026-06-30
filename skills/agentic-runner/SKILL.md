@@ -1,6 +1,6 @@
 ---
 name: agentic-runner
-description: "Agentic Runner control-plane: route/supervise coding-agents, Agentic StructCiv, or CodexVideo; create .agentic-runner state, handoff, resume, cross-workflow audit, scoped assignments, and source-change/self-host gates. Use only when explicitly requested."
+description: "agentic-runner: Agentic Runner control-plane for coding-agents, Agentic StructCiv, and CodexVideo routing; .agentic-runner state, handoff, resume, cross-workflow audit, scoped assignments, source-change and self-host gates. Explicit use only."
 ---
 
 # Agentic Runner
