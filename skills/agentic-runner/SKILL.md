@@ -1,6 +1,6 @@
 ---
 name: agentic-runner
-description: Use when the user explicitly asks for Agentic Runner or agentic-runner as an upper control-plane to route and supervise subordinate workflows such as coding-agents, Agentic StructCiv, or CodexVideo; intake/audit a target repo; maintain .agentic-runner route state; record route_class, controlled_workflows, execution_owner, handoff, resume checkpoint, and cross-workflow audit; manage workflow profiles/domain contracts; coordinate scoped assignments; run the source CLI; enforce self-host/debug/source-change gates; print handoff; or migrate legacy docs/codex. Do not use for generic one-off edits or as a peer code generator.
+description: "Agentic Runner control-plane: route/supervise coding-agents, Agentic StructCiv, or CodexVideo; create .agentic-runner state, handoff, resume, cross-workflow audit, scoped assignments, and source-change/self-host gates. Use only when explicitly requested."
 ---
 
 # Agentic Runner
