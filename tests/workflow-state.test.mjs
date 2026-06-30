@@ -444,147 +444,62 @@ test("intake generates supervision guidance in assignments and handoff", () => {
   }
 });
 
-test("intake persists the default workflow profile and domain contract", () => {
+test("intake and runner packets expose only route and work metadata", () => {
   const repo = makeTempGitRepo();
   try {
     const result = runCli([
       "intake",
       "--target-cwd",
       repo,
+      "--route-class",
+      "coding",
+      "--primary-workflow",
+      "coding-agents",
       "--task",
-      "record default workflow profile metadata",
+      "route code work to the specialist workflow",
       "--task-id",
-      "workflow-default",
+      "route-control-only",
       "--epoch",
       "e1",
       "--scope",
       "README.md",
     ]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /ok workflow_profile: default/);
-    assert.match(result.stdout, /ok workflow_domain_contract: agentic-runner\.workflow\.default\.v1/);
+    assert.match(result.stdout, /ok route_class: coding/);
+    assert.match(result.stdout, /ok primary_workflow: coding-agents/);
+    assert.doesNotMatch(result.stdout, removedModeStatePattern());
 
-    for (const file of ["project.md", "task.md", "assignments.md", "handoff.md"]) {
-      const text = readState(repo, file);
-      assert.match(text, /workflow_profile: default/);
-      assert.match(text, /workflow_domain: agentic-runner/);
-      assert.match(text, /workflow_domain_contract: agentic-runner\.workflow\.default\.v1/);
-    }
-    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
-    assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("old workflow state without workflow profile fields behaves as default", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, { taskId: "workflow-legacy-default", epoch: "e1", scope: "README.md" });
     for (const file of ["project.md", "task.md", "assignments.md", "handoff.md", "audit.md", "decisions.md"]) {
-      const filePath = path.join(repo, ".agentic-runner", file);
-      writeFileSync(filePath, stripWorkflowProfileLines(readFileSync(filePath, "utf8")), "utf8");
+      assert.doesNotMatch(readState(repo, file), removedModeStatePattern());
     }
 
+    const assigned = runCli([
+      "assign",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "route-control-only",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--assignment",
+      "route code work to coding-agents",
+      "--expected-output",
+      "assignment packet",
+    ]);
+    assert.equal(assigned.status, 0, assigned.stderr);
+
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /route_class: coding/);
+    assert.match(runner, /primary_workflow: coding-agents/);
+    assert.match(runner, /specialist_owner: coding-agents/);
+    assert.match(runner, /work_type: auto/);
+    assert.doesNotMatch(runner, removedModeStatePattern());
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
     assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
-
-    const assigned = runCli([
-      "assign",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Implementer",
-      "--task-id",
-      "workflow-legacy-default",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--assignment",
-      "append a packet from old no-profile state",
-      "--expected-output",
-      "assignment packet",
-    ]);
-    assert.equal(assigned.status, 0, assigned.stderr);
-    const runner = readState(repo, "runner.md");
-    assert.match(runner, /workflow_profile: default/);
-    assert.match(runner, /workflow_domain_contract: agentic-runner\.workflow\.default\.v1/);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("coding-agent workflow profile persists separately from feature profiles and runner packets inherit it", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, {
-      taskId: "workflow-coding-agent",
-      epoch: "e1",
-      scope: "README.md",
-      workflowProfile: "coding-agent",
-    });
-
-    const project = readState(repo, "project.md");
-    const task = readState(repo, "task.md");
-    const assignments = readState(repo, "assignments.md");
-    const handoff = readState(repo, "handoff.md");
-    for (const text of [project, task, assignments, handoff]) {
-      assert.match(text, /workflow_profile: coding-agent/);
-      assert.match(text, /workflow_domain: agentic-runner\.coding-agent/);
-      assert.match(text, /workflow_domain_contract: agentic-runner\.workflow\.coding-agent\.v1/);
-    }
-    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent|Specialist)(.+)$/gm)].length, 14);
-
-    const assigned = runCli([
-      "assign",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Implementer",
-      "--task-id",
-      "workflow-coding-agent",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--feature-profile",
-      "debug.reproducer",
-      "--assignment",
-      "confirm profile metadata stays distinct",
-      "--expected-output",
-      "assignment packet",
-    ]);
-    assert.equal(assigned.status, 0, assigned.stderr);
-
-    const runner = readState(repo, "runner.md");
-    assert.match(runner, /feature_profile: debug\.reproducer/);
-    assert.match(runner, /workflow_profile: coding-agent/);
-    assert.match(runner, /workflow_domain_contract: agentic-runner\.workflow\.coding-agent\.v1/);
-    assert.doesNotMatch(assignments, /feature_profile: debug\.reproducer/);
-    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("plugin-source workflow profile remains a narrower source cache boundary profile", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, {
-      taskId: "workflow-plugin-source",
-      epoch: "e1",
-      scope: "README.md",
-      workflowProfile: "plugin-source",
-    });
-
-    const task = readState(repo, "task.md");
-    const assignments = readState(repo, "assignments.md");
-    assert.match(task, /workflow_profile: plugin-source/);
-    assert.match(task, /workflow_domain: agentic-runner\.plugin-source/);
-    assert.match(task, /workflow_domain_contract: agentic-runner\.workflow\.plugin-source\.v1/);
-    assert.match(assignments, /workflow_profile_guidance: Narrow metadata-only profile for plugin source work/);
-    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -828,138 +743,6 @@ test("orchestrate records control-plane orchestration state and rejects process 
   }
 });
 
-test("workflow profiles cannot be overridden by runner packets", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, {
-      taskId: "workflow-packet-override",
-      epoch: "e1",
-      scope: "README.md",
-      workflowProfile: "coding-agent",
-    });
-
-    const rejected = runCli([
-      "assign",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Implementer",
-      "--task-id",
-      "workflow-packet-override",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--workflow-profile",
-      "plugin-source",
-      "--assignment",
-      "try to override workflow profile from a runner packet",
-      "--expected-output",
-      "rejected packet",
-    ]);
-    assert.notEqual(rejected.status, 0);
-    assert.match(rejected.stderr, /--workflow-profile is only supported for intake/);
-    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("doctor and verify reject unknown workflow profile in task state", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, {
-      taskId: "workflow-corrupt-profile",
-      epoch: "e1",
-      scope: "README.md",
-      workflowProfile: "coding-agent",
-    });
-    const taskPath = path.join(repo, ".agentic-runner", "task.md");
-    writeFileSync(
-      taskPath,
-      readFileSync(taskPath, "utf8").replace("workflow_profile: coding-agent", "workflow_profile: impossible-profile"),
-      "utf8",
-    );
-
-    const doctor = runCli(["doctor", "--target-cwd", repo]);
-    assert.notEqual(doctor.status, 0);
-    assert.match(doctor.stdout, /task\.md:workflow_profile unknown \(impossible-profile\)/);
-
-    const verify = runCli(["verify-assignments", "--target-cwd", repo]);
-    assert.notEqual(verify.status, 0);
-    assert.match(verify.stdout, /task\.md:workflow_profile unknown \(impossible-profile\)/);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("unknown workflow profile fails before writing state", () => {
-  const repo = makeTempGitRepo();
-  try {
-    const rejected = runCli([
-      "intake",
-      "--target-cwd",
-      repo,
-      "--workflow-profile",
-      "unknown-domain",
-      "--task",
-      "try an unknown workflow profile",
-      "--task-id",
-      "workflow-reject",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-    ]);
-    assert.notEqual(rejected.status, 0);
-    assert.match(rejected.stderr, /unknown workflow profile: unknown-domain/);
-    assert.match(rejected.stderr, /default, coding-agent, plugin-source/);
-    assert.equal(existsSync(path.join(repo, ".agentic-runner")), false);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("feature profiles are optional overlays and do not change the fixed 14-role scaffold", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, { taskId: "profile-scaffold", epoch: "e1", scope: "README.md" });
-
-    const assigned = runCli([
-      "assign",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Implementer",
-      "--task-id",
-      "profile-scaffold",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--feature-profile",
-      "workflow.state-safety",
-      "--assignment",
-      "check workflow state append safety",
-      "--expected-output",
-      "assignment packet",
-    ]);
-    assert.equal(assigned.status, 0, assigned.stderr);
-
-    const assignments = readState(repo, "assignments.md");
-    assert.equal([...assignments.matchAll(/^## (?!Debugging|Meta-Cognitive|Nested|Subagent|Specialist)(.+)$/gm)].length, 14);
-    assert.doesNotMatch(assignments, /workflow\.state-safety/);
-    assert.doesNotMatch(assignments, /^## workflow\.state-safety$/m);
-
-    const runner = readState(repo, "runner.md");
-    assert.match(runner, /feature_profile: workflow\.state-safety/);
-    assert.match(runner, /feature_profile_guidance: .*optional assignment overlay, not a resident agent or spawned worker/);
-    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
 test("runner assignment packets carry supervision guidance", () => {
   const repo = makeTempGitRepo();
   try {
@@ -1082,240 +865,6 @@ test("n_level hierarchy requires finite max depth before runner state append", (
   }
 });
 
-test("valid feature profile renders in assignment, collect, and control-plane orchestration packets", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, { taskId: "profile-render", epoch: "e1", scope: "README.md" });
-
-    const assigned = runCli([
-      "assign",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Implementer",
-      "--task-id",
-      "profile-render",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--feature-profile",
-      "debug.reproducer",
-      "--assignment",
-      "capture a reproduction",
-      "--expected-output",
-      "assignment packet",
-    ]);
-    assert.equal(assigned.status, 0, assigned.stderr);
-    assert.match(assigned.stdout, /ok feature_profile: debug\.reproducer/);
-
-    const collected = runCli([
-      "collect",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Implementer",
-      "--task-id",
-      "profile-render",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--feature-profile",
-      "debug.reproducer",
-      "--status",
-      "blocked",
-      "--findings",
-      "reproduction needs a fixture",
-      "--blockers",
-      "fixture is not available",
-      "--next",
-      "parent decides fixture source",
-    ]);
-    assert.equal(collected.status, 0, collected.stderr);
-    assert.match(collected.stdout, /ok feature_profile: debug\.reproducer/);
-
-    const run = runCli([
-      "orchestrate",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Test Runner",
-      "--task-id",
-      "profile-render",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--feature-profile",
-      "debug.reproducer",
-      "--assignment",
-      "record a runner skeleton",
-      "--expected-output",
-      "runner skeleton",
-    ]);
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /ok feature_profile: debug\.reproducer/);
-
-    const runner = readState(repo, "runner.md");
-    assert.match(runner, /type: assignment[\s\S]*feature_profile: debug\.reproducer/);
-    assert.match(runner, /type: parent-integration[\s\S]*feature_profile: debug\.reproducer/);
-    assert.match(runner, /type: orchestration-state[\s\S]*feature_profile: debug\.reproducer/);
-    assert.match(runner, /type: assignment[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
-    assert.match(runner, /type: parent-integration[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
-    assert.match(runner, /type: orchestration-state[\s\S]*feature_profile: debug\.reproducer[\s\S]*work_type: auto/);
-    assert.match(runner, /type: orchestration-state[\s\S]*agentic_runner_layer: control-plane/);
-    assert.match(runner, /type: orchestration-state[\s\S]*layer_boundary: Agentic Runner operates above coding-agents/);
-    assert.match(runner, /feature_profile_guidance: .*reproduce the expected versus actual behavior/);
-    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("codex-cli runner prompt and result carry the feature profile overlay", () => {
-  const repo = makeTempGitRepo();
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
-  try {
-    intake(repo, { taskId: "profile-runner", epoch: "e1", scope: "README.md" });
-    const fakeCodex = path.join(fakeBin, "codex");
-    writeFileSync(fakeCodex, `#!/usr/bin/env node
-const { writeFileSync } = require("node:fs");
-const args = process.argv.slice(2);
-const prompt = args[args.length - 1] || "";
-if (!prompt.includes("feature_profile: runner.scope-guard")) process.exit(7);
-if (!prompt.includes("optional assignment overlay, not a resident agent or spawned worker")) process.exit(8);
-if (!prompt.includes("Silence before heartbeat deadline is neutral, not failure")) process.exit(9);
-if (!prompt.includes("Parent must not cancel, interrupt, retire, or replace during the no-interrupt window")) process.exit(10);
-if (!prompt.includes("missed heartbeat -> soft ping/status request -> grace wait -> stale mark")) process.exit(11);
-if (!prompt.includes("hierarchy_mode: none")) process.exit(12);
-if (!prompt.includes("heartbeat_interval: PT15M")) process.exit(13);
-if (!prompt.includes("cancel_reason_required: true")) process.exit(14);
-const outputIndex = args.indexOf("--output-last-message");
-if (outputIndex !== -1) writeFileSync(args[outputIndex + 1], "runner prompt included feature_profile: runner.scope-guard and supervision\\n", "utf8");
-process.stdout.write("fake codex completed\\n");
-`, "utf8");
-    chmodSync(fakeCodex, 0o755);
-
-    const run = runCli([
-      "run",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Test Runner",
-      "--task-id",
-      "profile-runner",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--feature-profile",
-      "runner.scope-guard",
-      "--assignment",
-      "verify the prompt carries the feature profile",
-      "--expected-output",
-      "runner result",
-      "--runner",
-      "codex-cli",
-    ], {
-      env: {
-        ...process.env,
-        PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
-      },
-    });
-
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /ok feature_profile: runner\.scope-guard/);
-    const runner = readState(repo, "runner.md");
-    assert.match(runner, /type: assignment[\s\S]*feature_profile: runner\.scope-guard/);
-    assert.match(runner, /type: process-runner-result[\s\S]*feature_profile: runner\.scope-guard/);
-    assert.match(runner, /type: process-runner-result[\s\S]*supervision_contract: Subagent Supervision Contract/);
-    assert.match(runner, /type: process-runner-result[\s\S]*hierarchy_mode: none/);
-    assert.match(runner, /type: process-runner-result[\s\S]*hard_timeout: PT120M/);
-    assert.match(runner, /summary: runner prompt included feature_profile: runner\.scope-guard and supervision/);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-    rmSync(fakeBin, { recursive: true, force: true });
-  }
-});
-
-test("unknown feature profiles fail before runner state is appended", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, { taskId: "profile-reject", epoch: "e1", scope: "README.md" });
-
-    for (const args of [
-      [
-        "assign",
-        "--target-cwd",
-        repo,
-        "--role",
-        "Implementer",
-        "--task-id",
-        "profile-reject",
-        "--epoch",
-        "e1",
-        "--scope",
-        "README.md",
-        "--feature-profile",
-        "debug.unknown",
-        "--assignment",
-        "make a scoped change",
-        "--expected-output",
-        "assignment packet",
-      ],
-      [
-        "collect",
-        "--target-cwd",
-        repo,
-        "--role",
-        "Implementer",
-        "--task-id",
-        "profile-reject",
-        "--epoch",
-        "e1",
-        "--scope",
-        "README.md",
-        "--feature-profile",
-        "debug.unknown",
-        "--status",
-        "blocked",
-        "--blockers",
-        "unknown profile",
-        "--next",
-        "retry with known profile",
-      ],
-      [
-        "run",
-        "--target-cwd",
-        repo,
-        "--role",
-        "Implementer",
-        "--task-id",
-        "profile-reject",
-        "--epoch",
-        "e1",
-        "--scope",
-        "README.md",
-        "--feature-profile",
-        "debug.unknown",
-        "--assignment",
-        "make a scoped change",
-        "--expected-output",
-        "runner packet",
-      ],
-    ]) {
-      const rejected = runCli(args);
-      assert.notEqual(rejected.status, 0, `${args[0]} unexpectedly passed`);
-      assert.match(rejected.stderr, /unknown feature profile: debug\.unknown/);
-      assert.match(rejected.stderr, /debug\.reproducer/);
-      assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
-    }
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
 test("unknown work types fail before runner state is appended", () => {
   const repo = makeTempGitRepo();
   try {
@@ -1393,63 +942,7 @@ test("unknown work types fail before runner state is appended", () => {
   }
 });
 
-test("omitted feature profile remains backwards compatible and records none", () => {
-  const repo = makeTempGitRepo();
-  try {
-    intake(repo, { taskId: "profile-none", epoch: "e1", scope: "README.md" });
-
-    const assigned = runCli([
-      "assign",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Implementer",
-      "--task-id",
-      "profile-none",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--assignment",
-      "make a scoped change",
-      "--expected-output",
-      "assignment packet",
-    ]);
-    assert.equal(assigned.status, 0, assigned.stderr);
-    assert.match(assigned.stdout, /ok feature_profile: none/);
-
-    const collected = runCli([
-      "collect",
-      "--target-cwd",
-      repo,
-      "--role",
-      "Implementer",
-      "--task-id",
-      "profile-none",
-      "--epoch",
-      "e1",
-      "--scope",
-      "README.md",
-      "--status",
-      "completed",
-      "--findings",
-      "done",
-      "--changed-files",
-      "README.md",
-      "--verification",
-      "not run",
-    ]);
-    assert.equal(collected.status, 0, collected.stderr);
-    const runner = readState(repo, "runner.md");
-    assert.match(runner, /feature_profile: none/);
-    assert.doesNotMatch(runner, /feature_profile_guidance:/);
-    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
-});
-
-test("legacy runner packets without work_type remain explicitly backwards compatible", () => {
+test("pre-gate runner packets without work_type remain readable", () => {
   const repo = makeTempGitRepo();
   try {
     intake(repo, { taskId: "work-type-legacy", epoch: "e1", scope: "README.md" });
@@ -2347,7 +1840,6 @@ function intake(repo, options) {
     "--scope",
     options.scope,
   ];
-  if (options.workflowProfile) args.splice(3, 0, "--workflow-profile", options.workflowProfile);
   if (options.workType) args.splice(3, 0, "--work-type", options.workType);
   const result = runCli(args);
   assert.equal(result.status, 0, result.stderr);
@@ -2417,7 +1909,6 @@ This file records legacy packets without work_type.
 - task_id: ${taskId}
 - epoch: e1
 - scope: README.md
-- feature_profile: none
 - invocation_cwd: /tmp/legacy
 - target_cwd: /tmp/legacy
 - assignment: make a scoped documentation change
@@ -2436,7 +1927,6 @@ This file records legacy packets without work_type.
 - task_id: ${taskId}
 - epoch: e1
 - scope: README.md
-- feature_profile: none
 - invocation_cwd: /tmp/legacy
 - target_cwd: /tmp/legacy
 - findings: legacy packet completed documentation work
@@ -2463,7 +1953,6 @@ function modernRunnerPacket(taskId) {
 - task_id: ${taskId}
 - epoch: e1
 - scope: README.md
-- feature_profile: none
 - work_type: auto
 ${testPacketRouteFieldLines()}
 - invocation_cwd: /tmp/modern
@@ -2553,11 +2042,12 @@ function stripTimingLines(text) {
     .join("\n");
 }
 
-function stripWorkflowProfileLines(text) {
-  return text
-    .split(/\r?\n/)
-    .filter((line) => !/^- workflow_(?:profile|domain|domain_contract|profile_guidance):/.test(line))
-    .join("\n");
+
+function removedModeStatePattern() {
+  const p = "pro" + "file";
+  const workflow = "workflow";
+  const feature = "feature";
+  return new RegExp(`(?:${workflow}_${p}|${workflow}_domain|${workflow}_domain_contract|${workflow}_${p}_guidance|${feature}_${p}|${feature}_${p}_guidance):`);
 }
 
 function assertSupervisionSchema(text) {

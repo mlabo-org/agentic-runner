@@ -54,7 +54,7 @@ Agentic Runner should own these responsibilities:
   mixed, or unknown workflow classes;
 - select the primary specialist workflow instead of reimplementing it;
 - create and preserve handoff material between specialist workflows;
-- record `task_id`, `epoch`, scope, non-goals, workflow profile, and stop
+- record `task_id`, `epoch`, scope, non-goals, route state, owners, and stop
   conditions for resumed work;
 - track which workflow owns which artifact and which verification;
 - supervise subagent lifecycle, finite delegation depth, and cancellation
