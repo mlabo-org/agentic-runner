@@ -555,7 +555,7 @@ function runCodexCli(commandContext, packet, options) {
   const outputPath = path.join(tempDir, "last-message.md");
   const prompt = renderRunnerPrompt(packet);
   const cwd = commandContext.targetCwd;
-  const beforePaths = readGitChangedPaths(cwd);
+  const beforePaths = readGitScopeGuardPaths(cwd);
   const codexArgs = [
     "exec",
     "--cd",
@@ -1064,7 +1064,9 @@ function renderTask(context) {
 - scope: ${context.scope}
 - work_type: ${workTypeId(context)}
 ${renderRouteDecisionFields(context)}
-- task: ${context.task}
+- task:
+
+${indentBlock(context.task)}
 
 ## Specialist Workflow Route
 
@@ -1309,94 +1311,104 @@ Subagent lifecycle:
 }
 
 function normalizeGeneratedWorkflowDocument(text) {
-  return stripGeneratedWorkflowSurroundings(text);
+  return mapGeneratedWorkflowBlock(text, (block) => block);
 }
 
 function normalizeReadmeDebugIntegrity(text, context = {}) {
-  const block = `- ${DEBUG_INTEGRITY}`;
-  const lifecycleLine =
-    "- Subagents are active only for scoped work and must be closed or retired promptly when their result is integrated, blocked, failed, timed out, stale, or no longer needed.";
-  let next = stripGeneratedWorkflowSurroundings(text).replace(
-    new RegExp(
-      `^- Subagents are active only for scoped work and must be closed or retired promptly\\n- ${escapeRegExp(DEBUG_INTEGRITY)} when their result is integrated, blocked, failed, timed out, stale, or no longer needed\\.$`,
-      "m",
-    ),
-    `${lifecycleLine}\n${block}`,
-  );
-  if (!next.includes(DEBUG_INTEGRITY)) {
-    next = insertAfterLineMatching(
-      next,
-      new RegExp(`^${escapeRegExp(lifecycleLine)}$`, "m"),
-      block,
-      `## Debugging Integrity\n\n${block}`,
+  return mapGeneratedWorkflowBlock(text, (generated) => {
+    const block = `- ${DEBUG_INTEGRITY}`;
+    const lifecycleLine =
+      "- Subagents are active only for scoped work and must be closed or retired promptly when their result is integrated, blocked, failed, timed out, stale, or no longer needed.";
+    let next = generated.replace(
+      new RegExp(
+        `^- Subagents are active only for scoped work and must be closed or retired promptly\\n- ${escapeRegExp(DEBUG_INTEGRITY)} when their result is integrated, blocked, failed, timed out, stale, or no longer needed\\.$`,
+        "m",
+      ),
+      `${lifecycleLine}\n${block}`,
     );
-  }
-  next = normalizeReadmeSupervision(next);
-  return normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+    if (!next.includes(DEBUG_INTEGRITY)) {
+      next = insertAfterLineMatching(
+        next,
+        new RegExp(`^${escapeRegExp(lifecycleLine)}$`, "m"),
+        block,
+        `## Debugging Integrity\n\n${block}`,
+      );
+    }
+    next = normalizeReadmeSupervision(next);
+    return normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+  });
 }
 
 function normalizeTaskDebugIntegrity(text, context = {}) {
-  const block = "- Debug or repair work is not complete until root cause is identified, fixed, and verified against the intended outcome.";
-  const lifecycleLine =
-    "- Each generated assignment carries lifecycle guidance requiring concise integration material and prompt close/retire handling.";
-  let next = stripGeneratedWorkflowSurroundings(text).replace(
-    new RegExp(
-      `^- Each generated assignment carries lifecycle guidance\\n${escapeRegExp(block)} requiring concise integration material and prompt close/retire handling\\.$`,
-      "m",
-    ),
-    `${lifecycleLine}\n${block}`,
-  );
-  if (!next.includes("Debug or repair work is not complete until root cause is identified")) {
-    next = insertAfterLineMatching(next, new RegExp(`^${escapeRegExp(lifecycleLine)}$`, "m"), block, block);
-  }
-  next = normalizeTaskSupervision(next);
-  return normalizeTaskMetacognitiveGate(next, context.workflowGate);
+  return mapGeneratedWorkflowBlock(text, (generated) => {
+    const block = "- Debug or repair work is not complete until root cause is identified, fixed, and verified against the intended outcome.";
+    const lifecycleLine =
+      "- Each generated assignment carries lifecycle guidance requiring concise integration material and prompt close/retire handling.";
+    let next = generated.replace(
+      new RegExp(
+        `^- Each generated assignment carries lifecycle guidance\\n${escapeRegExp(block)} requiring concise integration material and prompt close/retire handling\\.$`,
+        "m",
+      ),
+      `${lifecycleLine}\n${block}`,
+    );
+    if (!next.includes("Debug or repair work is not complete until root cause is identified")) {
+      next = insertAfterLineMatching(next, new RegExp(`^${escapeRegExp(lifecycleLine)}$`, "m"), block, block);
+    }
+    next = normalizeTaskSupervision(next);
+    return normalizeTaskMetacognitiveGate(next, context.workflowGate);
+  });
 }
 
 function normalizeAuditDebugIntegrity(text, context = {}) {
-  let next = stripGeneratedWorkflowSurroundings(text);
-  const block = "- For debug or repair work, record root cause, fix, and verification that the intended outcome now succeeds.";
-  if (!next.includes("For debug or repair work, record root cause")) {
-    next = insertAfterLineMatching(next, /^- Record skipped checks with reasons\./m, block, block);
-  }
-  if (context.workflowGate?.required && !next.includes("If metacognitive_gate_required is true")) {
-    next = insertAfterLineMatching(
-      next,
-      /^- For debug or repair work, record root cause.*$/m,
-      `- If metacognitive_gate_required is true, record ${METACOGNITIVE_GATE_FIELDS.join(", ")} before accepting completion.`,
-      `- If metacognitive_gate_required is true, record ${METACOGNITIVE_GATE_FIELDS.join(", ")} before accepting completion.`,
-    );
-  }
-  next = normalizeAuditSupervision(next);
-  return next;
+  return mapGeneratedWorkflowBlock(text, (generated) => {
+    let next = generated;
+    const block = "- For debug or repair work, record root cause, fix, and verification that the intended outcome now succeeds.";
+    if (!next.includes("For debug or repair work, record root cause")) {
+      next = insertAfterLineMatching(next, /^- Record skipped checks with reasons\./m, block, block);
+    }
+    if (context.workflowGate?.required && !next.includes("If metacognitive_gate_required is true")) {
+      next = insertAfterLineMatching(
+        next,
+        /^- For debug or repair work, record root cause.*$/m,
+        `- If metacognitive_gate_required is true, record ${METACOGNITIVE_GATE_FIELDS.join(", ")} before accepting completion.`,
+        `- If metacognitive_gate_required is true, record ${METACOGNITIVE_GATE_FIELDS.join(", ")} before accepting completion.`,
+      );
+    }
+    next = normalizeAuditSupervision(next);
+    return next;
+  });
 }
 
 function normalizeAssignmentsDebugIntegrity(text, context = {}) {
-  let next = stripGeneratedWorkflowSurroundings(text);
-  const block = `## Debugging Integrity Gate
+  return mapGeneratedWorkflowBlock(text, (generated) => {
+    let next = generated;
+    const block = `## Debugging Integrity Gate
 
 - ${DEBUG_INTEGRITY}
 - For debug or repair tasks, integration material must include expected outcome, actual failure, reproduction path, failure point, root cause, fix, and verification.`;
-  if (!next.includes(DEBUG_INTEGRITY)) next = insertAfterRoleScaffoldHeading(next, block);
-  next = normalizeAssignmentsSupervision(next);
-  return normalizeAssignmentsMetacognitiveGate(next, context.workflowGate);
+    if (!next.includes(DEBUG_INTEGRITY)) next = insertAfterRoleScaffoldHeading(next, block);
+    next = normalizeAssignmentsSupervision(next);
+    return normalizeAssignmentsMetacognitiveGate(next, context.workflowGate);
+  });
 }
 
 function normalizeHandoffDebugIntegrity(text, context = {}) {
-  let next = stripGeneratedWorkflowSurroundings(text);
-  const block = `Debugging integrity:
+  return mapGeneratedWorkflowBlock(text, (generated) => {
+    let next = generated;
+    const block = `Debugging integrity:
 - ${DEBUG_INTEGRITY}
 - If root cause remains unknown, report unresolved or temporary containment and name the next investigation step.
 - Separate root cause, fix, and verification in debug or repair summaries.`;
-  if (!next.includes("Debugging integrity:")) {
-    if (/^Subagent lifecycle:$/m.test(next)) {
-      next = next.replace(/^Subagent lifecycle:$/m, `${block}\n\nSubagent lifecycle:`);
-    } else {
-      next = `${next.trimEnd()}\n\n${block}\n`;
+    if (!next.includes("Debugging integrity:")) {
+      if (/^Subagent lifecycle:$/m.test(next)) {
+        next = next.replace(/^Subagent lifecycle:$/m, `${block}\n\nSubagent lifecycle:`);
+      } else {
+        next = `${next.trimEnd()}\n\n${block}\n`;
+      }
     }
-  }
-  next = normalizeHandoffSupervision(next);
-  return normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+    next = normalizeHandoffSupervision(next);
+    return normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+  });
 }
 
 function normalizeRunnerDebugIntegrity(text, context = {}) {
@@ -1826,7 +1838,7 @@ function assertMachineRunnableScope(packet, cwd) {
 
 function assertNoDirtyPathsOutsideMachineScope(cwd, scope, prefixes) {
   if (prefixes.includes(".")) return;
-  const dirtyOutsideScope = readGitChangedPaths(cwd)
+  const dirtyOutsideScope = readGitScopeGuardPaths(cwd)
     .filter((changedPath) => !isPathAllowedByScope(changedPath, prefixes));
   if (dirtyOutsideScope.length) {
     throw new CliError(
@@ -1847,7 +1859,7 @@ function applyScopeGuard(result, packet, cwd, beforePaths, scopePrefixes = null)
   }
   if (prefixes.includes(".")) return result;
 
-  const afterPaths = readGitChangedPaths(cwd);
+  const afterPaths = readGitScopeGuardPaths(cwd);
   const changedAfterRunner = afterPaths.filter((changedPath) => !beforePaths.includes(changedPath));
   const outsideScope = changedAfterRunner.filter((changedPath) => !isPathAllowedByScope(changedPath, prefixes));
   if (!outsideScope.length) return result;
@@ -3074,7 +3086,51 @@ function renderRunnerLifecycle(result) {
 
 function upsertGenerated(filePath, body) {
   const block = `${START}\n${GENERATED_HEADING}\n\n${body.trim()}\n${END}\n`;
+  if (existsSync(filePath)) {
+    const current = readFileSync(filePath, "utf8");
+    const merged = replaceGeneratedBlock(current, block);
+    if (merged !== null) {
+      writeFileSync(filePath, ensureTrailingNewline(merged), "utf8");
+      return;
+    }
+  }
   writeFileSync(filePath, block, "utf8");
+}
+
+function replaceGeneratedBlock(current, block) {
+  const startIndex = current.indexOf(START);
+  const endIndex = current.indexOf(END);
+  if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) return null;
+  return `${preserveWorkflowSurrounding(current.slice(0, startIndex))}${block}${preserveWorkflowSurrounding(current.slice(afterGeneratedEnd(current, endIndex)))}`;
+}
+
+function mapGeneratedWorkflowBlock(text, mapper) {
+  const startIndex = text.indexOf(START);
+  const endIndex = text.indexOf(END);
+  if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) return mapper(text);
+  const block = `${text.slice(startIndex, endIndex + END.length).trimEnd()}\n`;
+  const nextBlock = ensureTrailingNewline(mapper(block));
+  return `${preserveWorkflowSurrounding(text.slice(0, startIndex))}${nextBlock}${preserveWorkflowSurrounding(text.slice(afterGeneratedEnd(text, endIndex)))}`;
+}
+
+function afterGeneratedEnd(text, endIndex) {
+  const afterEnd = endIndex + END.length;
+  if (text.startsWith("\r\n", afterEnd)) return afterEnd + 2;
+  if (text.startsWith("\n", afterEnd)) return afterEnd + 1;
+  return afterEnd;
+}
+
+function preserveWorkflowSurrounding(text) {
+  if (looksLikeStaleActiveWorkflowState(text)) return "";
+  return text;
+}
+
+function looksLikeStaleActiveWorkflowState(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return false;
+  return /^- task_id:\s*\S/m.test(trimmed)
+    && /^- epoch:\s*\S/m.test(trimmed)
+    && /^- scope:\s*\S/m.test(trimmed);
 }
 
 function stripGeneratedWorkflowSurroundings(text) {
@@ -3428,6 +3484,22 @@ function readGitChangedPaths(cwd) {
   }
 }
 
+function readGitScopeGuardPaths(cwd) {
+  try {
+    const output = execFileSync("git", ["-C", cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored=matching"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return parsePorcelainZPaths(output).filter((changedPath) => !isScopeGuardInternalPath(changedPath)).sort();
+  } catch {
+    return [];
+  }
+}
+
+function isScopeGuardInternalPath(changedPath) {
+  return changedPath === STATE_DIR_NAME || changedPath.startsWith(`${STATE_DIR_NAME}/`);
+}
+
 function parsePorcelainZPaths(output) {
   const records = output.split("\0").filter(Boolean);
   const paths = [];
@@ -3640,6 +3712,13 @@ function singleLine(value) {
   return String(value).replace(/\s+/g, " ").trim();
 }
 
+function indentBlock(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => `  ${line}`)
+    .join("\n");
+}
+
 function summarizeRunnerOutput(value) {
   const text = singleLine(value || "none");
   if (text.length <= 600) return text;
@@ -3655,7 +3734,11 @@ function ensureTrailingNewline(value) {
 }
 
 function parsePositiveInt(value, flag) {
-  const parsed = Number.parseInt(String(value), 10);
+  const raw = String(value);
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new CliError(`invalid ${flag}: expected positive integer`, 1);
+  }
+  const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new CliError(`invalid ${flag}: expected positive integer`, 1);
   }

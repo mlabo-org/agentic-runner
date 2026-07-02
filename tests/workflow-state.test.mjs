@@ -88,6 +88,28 @@ test("cross-repo intake records non-self-host gate state", () => {
   }
 });
 
+test("intake and normalization preserve manual notes outside generated blocks", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, { taskId: "manual-state", epoch: "e1", scope: "README.md" });
+    const decisionsPath = path.join(repo, ".agentic-runner", "decisions.md");
+    const auditPath = path.join(repo, ".agentic-runner", "audit.md");
+    writeFileSync(decisionsPath, `${readFileSync(decisionsPath, "utf8")}\n## Manual Decision\n\nKeep this accepted note.\n`, "utf8");
+    writeFileSync(auditPath, `# Manual Audit Preamble\n\nKeep this preamble.\n\n${readFileSync(auditPath, "utf8")}`, "utf8");
+
+    intake(repo, { taskId: "manual-state", epoch: "e2", scope: "README.md" });
+    assert.match(readState(repo, "decisions.md"), /## Manual Decision[\s\S]*Keep this accepted note\./);
+    assert.match(readState(repo, "audit.md"), /^# Manual Audit Preamble[\s\S]*Keep this preamble\./);
+
+    const normalized = runCli(["normalize-debugging-integrity", "--target-cwd", repo, "--execute"]);
+    assert.equal(normalized.status, 0, normalized.stderr);
+    assert.match(readState(repo, "decisions.md"), /## Manual Decision[\s\S]*Keep this accepted note\./);
+    assert.match(readState(repo, "audit.md"), /^# Manual Audit Preamble[\s\S]*Keep this preamble\./);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("runner commands require matching intake state before writing runner state", () => {
   const repo = makeTempGitRepo();
   try {
@@ -348,6 +370,36 @@ The fenced sample is task prose, not workflow identity.`,
     const fakeHandoff = runCli(["handoff", "--target-cwd", repo, "--task-id", "fake-task"]);
     assert.notEqual(fakeHandoff.status, 0);
     assert.match(fakeHandoff.stderr, /does not match current task task-fence/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("workflow identity ignores raw multiline task prose that looks like fields", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, {
+      taskId: "task-raw-multiline",
+      epoch: "e1",
+      scope: "README.md",
+      task: `Investigate raw multiline task prose.
+- task_id: fake-task
+- epoch: fake-epoch
+- scope: fake-scope
+The field-looking bullets are task prose, not workflow identity.`,
+    });
+
+    const task = readState(repo, "task.md");
+    assert.match(task, /^- task:\n\n  Investigate raw multiline task prose\./m);
+    assert.match(task, /^  - task_id: fake-task$/m);
+
+    const doctor = runCli(["doctor", "--target-cwd", repo]);
+    assert.equal(doctor.status, 0, doctor.stdout + doctor.stderr);
+    assert.doesNotMatch(doctor.stdout, /duplicated|fake-task|fake-epoch|fake-scope/);
+
+    const fakeHandoff = runCli(["handoff", "--target-cwd", repo, "--task-id", "fake-task"]);
+    assert.notEqual(fakeHandoff.status, 0);
+    assert.match(fakeHandoff.stderr, /does not match current task task-raw-multiline/);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -1308,6 +1360,53 @@ process.stdout.write("fake codex completed\\n");
   }
 });
 
+test("codex-cli runner scope guard catches ignored files outside scope", () => {
+  const repo = makeTempGitRepo();
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
+  try {
+    commitFile(repo, ".gitignore", "ignored-*.txt\n");
+    intake(repo, { taskId: "runner-ignored-scope", epoch: "e1", scope: "allowed.txt" });
+    const fakeCodex = path.join(fakeBin, "codex");
+    writeFileSync(fakeCodex, `#!/usr/bin/env node
+const { writeFileSync } = require("node:fs");
+writeFileSync("allowed.txt", "allowed change\\n", "utf8");
+writeFileSync("ignored-outside.txt", "ignored scope drift\\n", "utf8");
+process.stdout.write("fake codex completed\\n");
+`, "utf8");
+    chmodSync(fakeCodex, 0o755);
+
+    const run = runCli([
+      "run",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "runner-ignored-scope",
+      "--epoch",
+      "e1",
+      "--scope",
+      "allowed.txt",
+      "--assignment",
+      "write only the allowed file",
+      "--expected-output",
+      "runner result",
+      "--runner",
+      "codex-cli",
+    ], {
+      env: pathWithFakeCodex(fakeBin),
+    });
+
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /outside scope allowed\.txt: ignored-outside\.txt/);
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /failure: runner changed files outside scope allowed\.txt: ignored-outside\.txt/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(fakeBin, { recursive: true, force: true });
+  }
+});
+
 test("codex-cli runner rejects negative prose scope without blocking intake", () => {
   const repo = makeTempGitRepo();
   const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-fake-codex-"));
@@ -1820,6 +1919,31 @@ test("codex-cli runner validates runner name and timeout before appending assign
     ]);
     assert.notEqual(badTimeout.status, 0);
     assert.match(badTimeout.stderr, /invalid --timeout-ms: expected positive integer/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const malformedTimeout = runCli([
+      "run",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "runner-validation",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--assignment",
+      "write only the readme",
+      "--expected-output",
+      "runner result",
+      "--runner",
+      "codex-cli",
+      "--timeout-ms",
+      "1abc",
+    ]);
+    assert.notEqual(malformedTimeout.status, 0);
+    assert.match(malformedTimeout.stderr, /invalid --timeout-ms: expected positive integer/);
     assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });

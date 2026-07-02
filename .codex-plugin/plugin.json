@@ -1,7 +1,7 @@
 {
   "name": "agentic-runner",
   "version": "0.1.0",
-  "description": "Agentic Runner control-plane for routing coding-agents, Agentic StructCiv, and CodexVideo workflows with handoff, resume, audit, and supervised assignments.",
+  "description": "Agentic Runner control-plane for explicit routing of coding-agents, Agentic StructCiv, and CodexVideo with handoff, resume, audit, and supervised assignments.",
   "skills": "./skills/",
   "keywords": [
     "agentic-runner",
@@ -21,12 +21,24 @@
     "codex-video",
     "cross-workflow-audit",
     "stateful-handoff",
-    "resume-checkpoint"
+    "resume-checkpoint",
+    "explicit-use",
+    ".agentic-runner",
+    "target-cwd",
+    "task-id",
+    "epoch",
+    "scope",
+    "lifecycle",
+    "source-cache-runtime",
+    "write-boundary",
+    "external-supervised",
+    "legacy-docs-codex-migration",
+    "doc-codex-migration"
   ],
   "interface": {
     "displayName": "Agentic Runner",
-    "shortDescription": "Control-plane for Agentic Runner routing across coding-agents, Agentic StructCiv, CodexVideo, handoff, resume, audit, and supervised assignments.",
-    "longDescription": "Coordinates route state for coding-agents, Agentic StructCiv, and CodexVideo. Helps track control-plane decisions, handoff artifacts, resume checkpoints, cross-workflow audit context, and supervised assignments while specialist workflows produce their domain outputs.",
+    "shortDescription": "Explicit Agentic Runner control-plane routing for coding-agents, Agentic StructCiv, CodexVideo, handoff, resume, audit, and supervised assignments.",
+    "longDescription": "Coordinates route state for explicit Agentic Runner requests across coding-agents, Agentic StructCiv, and CodexVideo. Tracks handoff, resume, audit context, supervised assignments, and scoped Write boundaries while specialist workflows produce outputs.",
     "developerName": "suzukimakoto",
     "category": "Productivity",
     "capabilities": [
@@ -36,8 +48,8 @@
       "Audit"
     ],
     "defaultPrompt": [
-      "Use Agentic Runner to coordinate control-plane routing for coding-agents, Agentic StructCiv, or CodexVideo.",
-      "Track handoff, resume, audit context, and supervised assignments for the selected workflow."
+      "Use Agentic Runner for an explicit control-plane request across coding-agents, Agentic StructCiv, or CodexVideo.",
+      "Track handoff, resume, audit context, supervised assignments, and scoped Write boundaries."
     ],
     "brandColor": "#2563EB"
   },
