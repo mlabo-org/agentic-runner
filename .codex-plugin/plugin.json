@@ -1,7 +1,7 @@
 {
   "name": "agentic-runner",
   "version": "0.1.0",
-  "description": "Agentic Runner は coding-agents、Agentic StructCiv、CodexVideo などの subordinate execution workflow を自在に制御する上位 control-plane。対象 jobsite の .agentic-runner 状態に route_class、controlled_workflows、execution_owner、handoff、resume checkpoint、cross-workflow audit、固定ロール scaffold、supervised scoped assignment、source-change/debug/self-host gate を記録する。",
+  "description": "Agentic Runner control-plane for routing coding-agents, Agentic StructCiv, and CodexVideo workflows with handoff, resume, audit, and supervised assignments.",
   "skills": "./skills/",
   "keywords": [
     "agentic-runner",
@@ -10,8 +10,8 @@
     "subagent-supervision",
     "delegation-depth",
     "audit",
-    "metacognitive-debug",
-    "source-change-gate",
+    "debug-audit",
+    "source-change-audit",
     "control-plane",
     "workflow-router",
     "specialist-routing",
@@ -25,8 +25,8 @@
   ],
   "interface": {
     "displayName": "Agentic Runner",
-    "shortDescription": "Upper control-plane for routing coding-agents, Agentic StructCiv, CodexVideo, handoff/audit, source CLI, and gates.",
-    "longDescription": "Resolves the jobsite or explicit --target-cwd repository, stores .agentic-runner state under that target git root, and acts as the upper control-plane above subordinate execution workflows such as coding-agents, Agentic StructCiv, and CodexVideo. Agentic Runner records route_class, controlled_workflows, execution_owner, handoff artifacts, resume checkpoints, and cross-workflow audit state instead of duplicating specialist execution. It also records a fixed role scaffold plus optional supervised scoped assignment packets, finite delegation depth, heartbeat-based supervision, stale-safe cancellation rules, intake, planning, audit, source-change metacognitive gating, debug root-cause integrity, metacognitive context-impact checks, and an explicit self-host gate so Agentic Runner source edits remain external-supervised by default.",
+    "shortDescription": "Control-plane for Agentic Runner routing across coding-agents, Agentic StructCiv, CodexVideo, handoff, resume, audit, and supervised assignments.",
+    "longDescription": "Coordinates route state for coding-agents, Agentic StructCiv, and CodexVideo. Helps track control-plane decisions, handoff artifacts, resume checkpoints, cross-workflow audit context, and supervised assignments while specialist workflows produce their domain outputs.",
     "developerName": "suzukimakoto",
     "category": "Productivity",
     "capabilities": [
@@ -36,9 +36,8 @@
       "Audit"
     ],
     "defaultPrompt": [
-      "Use Agentic Runner as the upper control-plane to classify, route, and write .agentic-runner state.",
-      "Create supervised packets for subordinate owners: coding-agents, Agentic StructCiv, or CodexVideo.",
-      "Audit Agentic Runner handoff, resume checkpoint, cross-workflow completion, and self-host conditions before source edits."
+      "Use Agentic Runner to coordinate control-plane routing for coding-agents, Agentic StructCiv, or CodexVideo.",
+      "Track handoff, resume, audit context, and supervised assignments for the selected workflow."
     ],
     "brandColor": "#2563EB"
   },

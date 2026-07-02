@@ -6,31 +6,69 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("plugin metadata exposes Agentic Runner as an upper control-plane, not a peer generator", () => {
-  const plugin = JSON.parse(readFileSync(path.join(REPO_ROOT, ".codex-plugin", "plugin.json"), "utf8"));
-  const metadata = JSON.stringify(plugin);
+const DISCOVERY_TERMS = [
+  /Agentic Runner/,
+  /control-plane/i,
+  /coding-agents/,
+  /Agentic StructCiv/,
+  /CodexVideo/,
+  /handoff/i,
+  /resume/i,
+  /audit/i,
+  /supervised assignments/i,
+];
 
-  assert.match(metadata, /upper control-plane|control-plane/i);
-  assert.match(metadata, /subordinate execution workflows/i);
-  assert.match(metadata, /coding-agents/);
-  assert.match(metadata, /Agentic StructCiv/);
-  assert.match(metadata, /CodexVideo/);
-  assert.match(metadata, /controlled_workflows/);
-  assert.match(metadata, /execution_owner/);
-  assert.match(metadata, /cross-workflow audit/i);
-  assert.match(metadata, /instead of duplicating specialist execution/i);
+const BINDING_UI_TERMS = /\b(?:must|requires?|required|owns?|gate|self-host)\b/i;
+
+function assertDiscoveryTerms(text) {
+  for (const term of DISCOVERY_TERMS) {
+    assert.match(text, term);
+  }
+}
+
+function yamlScalar(text, key) {
+  const match = text.match(new RegExp(`^${key}:\\s*(.*)$`, "m"));
+  assert.ok(match, `missing YAML scalar: ${key}`);
+  return match[1].trim();
+}
+
+test("plugin UI metadata stays concise without binding operational rules", () => {
+  const plugin = JSON.parse(readFileSync(path.join(REPO_ROOT, ".codex-plugin", "plugin.json"), "utf8"));
+
+  const defaultPrompt = plugin.interface.defaultPrompt.join("\n");
+  const uiCopy = [
+    plugin.description,
+    plugin.interface.shortDescription,
+    plugin.interface.longDescription,
+    defaultPrompt,
+  ].join("\n");
+  const discoveryMetadata = JSON.stringify({
+    description: plugin.description,
+    keywords: plugin.keywords,
+    interface: plugin.interface,
+  });
+
+  assertDiscoveryTerms(uiCopy);
+  assert.doesNotMatch(uiCopy, BINDING_UI_TERMS);
+  assert.doesNotMatch(discoveryMetadata, BINDING_UI_TERMS);
+  assert.ok(plugin.description.length <= 180);
+  assert.ok(plugin.interface.shortDescription.length <= 180);
+  assert.ok(plugin.interface.longDescription.length <= 320);
+  assert.ok(defaultPrompt.length <= 220);
 });
 
-test("agent metadata routes known subordinate workflows under Agentic Runner control", () => {
+test("agent UI metadata preserves discovery terms without binding gate text", () => {
   const text = readFileSync(path.join(REPO_ROOT, "agents", "openai.yaml"), "utf8");
+  const uiCopy = [
+    yamlScalar(text, "display_name"),
+    yamlScalar(text, "short_description"),
+    yamlScalar(text, "default_prompt"),
+  ].join("\n");
 
-  assert.match(text, /upper control-plane above subordinate execution workflows/);
-  assert.match(text, /coding-agents for code\/debug\/source repair/);
-  assert.match(text, /Agentic StructCiv for article\/BLOG\/WordPress\/SWELL/);
-  assert.match(text, /CodexVideo for video\/short\/voice\/narration/);
-  assert.match(text, /Agentic Runner owns routing, stateful handoff, supervision, resume decisions, and final cross-workflow audit/);
-  assert.match(text, /Mixed routes require --specialist-owner|mixed routes to name --specialist-owner/i);
-  assert.match(text, /orchestrate as control-plane route state only/i);
+  assertDiscoveryTerms(uiCopy);
+  assert.doesNotMatch(uiCopy, BINDING_UI_TERMS);
+  assert.ok(yamlScalar(text, "short_description").length <= 180);
+  assert.ok(yamlScalar(text, "default_prompt").length <= 260);
 });
 
 test("skill contract preserves control-plane routing and subordinate ownership boundaries", () => {
@@ -41,7 +79,12 @@ test("skill contract preserves control-plane routing and subordinate ownership b
   assert.match(text, /coding-agents.*subordinate execution workflow for code generation, debugging, source repair/s);
   assert.match(text, /Agentic StructCiv.*subordinate execution workflow for article, BLOG, WordPress, SWELL/s);
   assert.match(text, /CodexVideo.*subordinate execution workflow for video, short-form production/s);
+  assert.match(text, /controlled_workflows/);
+  assert.match(text, /execution_owner/);
+  assert.match(text, /Do not treat Agentic Runner as a peer/);
   assert.match(text, /Mixed routes require it before appending runner state/);
   assert.match(text, /orchestrate.*never accepts `--runner`/s);
   assert.match(text, /If a proposed implementation makes Agentic Runner generate code, articles, or video directly.*reconsider the route/s);
+  assert.match(text, /## Self-Host Gate/);
+  assert.match(text, /Self-host mode is allowed only when all conditions are met/);
 });
