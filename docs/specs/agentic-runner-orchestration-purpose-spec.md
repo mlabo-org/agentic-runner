@@ -6,21 +6,26 @@ replacement for `.agentic-runner/` job state.
 
 ## Core Thesis
 
-Agentic Runner exists to be a thin orchestration kernel for complex Codex
-work, not a third specialist workflow and not a generic code generator.
+Agentic Runner exists to be a thin generic AGENT upper control-plane and
+orchestration kernel for complex Codex work, not another specialist workflow
+and not a generic content/code generator.
 
 Its value is not that it can write code, draft articles, generate videos, or
-run every task itself. Its value is that it can decide which already-specialized
-workflow should own each part of a mixed request, preserve handoff state between
-them, and audit whether the combined result is actually complete.
+run every task itself. Its value is that it can decide which declared tool,
+skill, plugin, MCP/app surface, or already-specialized workflow should own each
+part of a mixed request, preserve handoff state between them, and audit whether
+the combined result is actually complete.
 
-If Agentic Runner drifts into "one more code generation workflow", it loses its
-reason to exist. Code/debug/tool work already belongs to `coding-agents`.
-Article/SWELL/WordPress production already belongs to `Agentic StructCiv`.
-Video/TTS/Remotion production already belongs to `CodexVideo`.
+If Agentic Runner drifts into "one more execution workflow", it loses its
+reason to exist. Code/debug/tool work can belong to `coding-agents`.
+Article/SWELL/WordPress production can belong to `Agentic StructCiv`.
+Video/TTS/Remotion production can belong to `CodexVideo`. Other domains can
+belong to declared tools, skills, plugins, MCP/app surfaces, or future
+specialist workflows.
 
-Agentic Runner should coordinate those systems. It should not compete with
-them.
+Agentic Runner should coordinate those systems. The named workflows are
+built-in examples, not the boundary of the control-plane. It should not compete
+with leaf execution owners.
 
 ## Why It Can Look Unnecessary Today
 
@@ -50,13 +55,15 @@ Agentic Runner becomes valuable when that working memory is not enough:
 
 Agentic Runner should own these responsibilities:
 
-- classify a vague user request into article, coding, video, plugin-source,
-  mixed, or unknown workflow classes;
-- select the primary specialist workflow instead of reimplementing it;
-- create and preserve handoff material between specialist workflows;
+- classify a vague user request into built-in route classes such as article,
+  coding, video, plugin-source, mixed, or unknown, while allowing additional
+  declared controlled workflow ids;
+- select the primary execution owner instead of reimplementing it;
+- create and preserve handoff material between declared execution owners;
 - record `task_id`, `epoch`, scope, non-goals, route state, owners, and stop
   conditions for resumed work;
-- track which workflow owns which artifact and which verification;
+- track which tool, skill, plugin, or workflow owns which artifact and which
+  verification;
 - supervise subagent lifecycle, finite delegation depth, and cancellation
   reasons when the work is delegated;
 - detect when a specialist workflow must pause for a source hotfix, runtime
@@ -67,9 +74,9 @@ Agentic Runner should own these responsibilities:
 - enforce self-host and source-change gates when Agentic Runner is asked to
   modify itself.
 
-## Specialist Ownership
+## Execution Owner Boundary
 
-Agentic Runner must preserve specialist ownership:
+Agentic Runner must preserve leaf execution ownership:
 
 - `coding-agents` owns code changes, debugging, tool implementation, source
   edits, root-cause repair, Coding Conduct Gate evidence, and code-facing
@@ -80,12 +87,15 @@ Agentic Runner must preserve specialist ownership:
 - `CodexVideo` owns short/long video generation, source-to-video normalization,
   script/narration artifacts, TTS provider routing, user voice/PVN handling,
   Remotion rendering, visual-results manifests, and local upload packages.
+- Other declared tools, skills, plugins, MCP/app surfaces, and future workflows
+  own their own domain artifacts and verification evidence when the active route
+  assigns them.
 - Agentic Runner owns the route map, stateful handoff, scope boundaries,
   restart points, and cross-workflow audit.
 
-When a specialist workflow already owns a mature gate, Agentic Runner must not
-copy that gate as a parallel implementation. It may require that the specialist
-workflow runs the gate and returns evidence.
+When a leaf owner already owns a mature gate, Agentic Runner must not copy that
+gate as a parallel implementation. It may require that the leaf owner runs the
+gate and returns evidence.
 
 ## Non-Goals
 
@@ -95,16 +105,19 @@ Agentic Runner should not become:
 - a replacement for `coding-agents`;
 - an article writer competing with `Agentic StructCiv`;
 - a video generator competing with `CodexVideo`;
-- a hidden fallback layer that silently patches around specialist workflow
+- a replacement for future declared tools, skills, plugins, MCP/app surfaces, or
+  specialist workflows;
+- a hidden fallback layer that silently patches around leaf execution
   failures;
 - a cache patcher or activation shortcut;
 - a broad "do everything" command with unobservable internal state;
 - a serial-only workflow that prevents parent Codex from seeing failure points,
   artifacts, and restart boundaries.
 
-If a future change adds specialist behavior directly to Agentic Runner, the
+If a future change adds leaf execution behavior directly to Agentic Runner, the
 change must explain why that behavior is orchestration-owned rather than
-belonging to an existing specialist workflow.
+belonging to an existing tool, skill, plugin, MCP/app surface, or specialist
+workflow.
 
 ## Example Mixed Routes
 
@@ -151,23 +164,23 @@ Expected route:
 If the user later asks "Agentic Runner いらなくない？", answer at this grain:
 
 > 単発のコード修正、単発の記事制作、単発の動画生成だけなら不要に見えます。
-> その範囲は `coding-agents`、`Agentic StructCiv`、`CodexVideo` が直接担当できます。
+> その範囲は `coding-agents`、`Agentic StructCiv`、`CodexVideo` や、その場で宣言された tool / skill / plugin / workflow が直接担当できます。
 >
-> でも Agentic Runner の目的は、それらの専門 workflow の代替ではありません。
+> でも Agentic Runner の目的は、それらの実行 owner の代替ではありません。
 > 複数 workflow をまたぐ依頼で、誰が何を担当し、どこで止まり、何を検証済みとみなし、どこから再開するかを外部化するための orchestration kernel です。
 >
 > だから「コード生成機」としてなら不要です。
-> 「複合 workflow のルーター、状態管理、handoff、再開、監査」として育てるなら必要です。
+> 「複合 tool / skill / plugin / workflow のルーター、状態管理、handoff、再開、監査」として育てるなら必要です。
 > ここを忘れるなら畳んでよいが、ここを守るなら専門 workflow が増えるほど価値が出ます。
 
 ## Implementation Guardrail
 
 Before implementing a new Agentic Runner feature, ask:
 
-1. Does this feature route, supervise, resume, hand off, or audit specialist
-   workflows?
-2. Does an existing specialist workflow already own the actual production work?
-3. Is Agentic Runner preserving the specialist boundary instead of duplicating
+1. Does this feature route, supervise, resume, hand off, or audit declared
+   tools, skills, plugins, MCP/app surfaces, or specialist workflows?
+2. Does an existing leaf owner already own the actual production work?
+3. Is Agentic Runner preserving the leaf owner boundary instead of duplicating
    it?
 4. Will this leave durable state that a later Codex thread can use to continue
    or explain the job?
@@ -175,7 +188,7 @@ Before implementing a new Agentic Runner feature, ask:
    code diff?
 
 If the answer to all of these is no, the feature probably belongs in a
-specialist workflow or should not exist.
+  leaf execution workflow or should not exist.
 
 ## Success Condition
 

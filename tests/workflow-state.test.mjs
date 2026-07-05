@@ -588,11 +588,11 @@ test("intake classifies upper-layer routes and records controlled workflow bound
       assert.match(taskState, /agentic_runner_layer: control-plane/);
       assert.match(taskState, /controlled_workflows:/);
       assert.match(taskState, new RegExp(`execution_owner: ${expectedExecutionOwner}`));
-      assert.match(taskState, /route_contract: Agentic Runner routes and audits; specialist workflows are not replaced by this state scaffold\./);
+      assert.match(taskState, /route_contract: Agentic Runner routes and audits; declared tool, skill, plugin, and specialist workflow owners are not replaced by this state scaffold\./);
 
       const assignments = readState(repo, "assignments.md");
       assert.match(assignments, /route_layer: Agentic Runner is the upper orchestration layer; specialist workflows are execution layers\./);
-      assert.match(assignments, /route_contract: Agentic Runner owns routing, handoff, state, supervision, and audit; specialist workflows own production and verification evidence\./);
+      assert.match(assignments, /route_contract: Agentic Runner owns generic AGENT upper control, routing, handoff, state, supervision, and audit; declared tool, skill, plugin, and specialist workflow owners own production and verification evidence\./);
       assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
       assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
     } finally {
@@ -664,8 +664,63 @@ test("mixed route requires explicit subordinate execution owner on runner packet
     assert.match(runner, /controlled_workflows: agentic-runner, coding-agents, agentic-structciv, codex-video/);
     assert.match(runner, /execution_owner: coding-agents/);
     assert.match(runner, /specialist_owner: coding-agents/);
-    assert.match(runner, /layer_boundary: Agentic Runner operates above coding-agents, Agentic StructCiv, and CodexVideo/);
+    assert.match(runner, /layer_boundary: Agentic Runner operates as the generic AGENT upper control-plane above declared tool, skill, plugin, and specialist workflow owners/);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("mixed route accepts declared custom workflow owners", () => {
+  const repo = makeTempGitRepo();
+  try {
+    const result = runCli([
+      "intake",
+      "--target-cwd",
+      repo,
+      "--route-class",
+      "mixed",
+      "--controlled-workflows",
+      "tool:web,skill:macos-local-html,plugin:codex-capability-atlas",
+      "--task",
+      "Use multiple tools, skills, and plugins under Agentic Runner control",
+      "--task-id",
+      "generic-owner-route",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const assigned = runCli([
+      "assign",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "generic-owner-route",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--specialist-owner",
+      "skill:macos-local-html",
+      "--assignment",
+      "prepare the local HTML visual route",
+      "--expected-output",
+      "skill route packet",
+    ]);
+    assert.equal(assigned.status, 0, assigned.stderr);
+
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /controlled_workflows: agentic-runner, coding-agents, agentic-structciv, codex-video, tool:web, skill:macos-local-html, plugin:codex-capability-atlas/);
+    assert.match(runner, /execution_owner: skill:macos-local-html/);
+    assert.match(runner, /specialist_owner: skill:macos-local-html/);
+    assert.match(runner, /specialist_ownership: declared tool, skill, plugin, or specialist workflow execution/);
+    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+    assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -716,15 +771,15 @@ test("doctor and verify reject corrupted route state and subordinate owner field
     ]);
     assert.equal(assigned.status, 0, assigned.stderr);
     const runnerPath = path.join(packetRepo, ".agentic-runner", "runner.md");
-    writeFileSync(runnerPath, readFileSync(runnerPath, "utf8").replace("specialist_owner: coding-agents", "specialist_owner: nobody"), "utf8");
+    writeFileSync(runnerPath, readFileSync(runnerPath, "utf8").replace("specialist_owner: coding-agents", "specialist_owner: bad owner!"), "utf8");
 
     const verify = runCli(["verify-assignments", "--target-cwd", packetRepo]);
     assert.notEqual(verify.status, 0);
-    assert.match(verify.stdout, /specialist_owner unknown \(nobody\)/);
+    assert.match(verify.stdout, /specialist_owner invalid \(bad owner!\)/);
 
     const doctor = runCli(["doctor", "--target-cwd", packetRepo]);
     assert.notEqual(doctor.status, 0);
-    assert.match(doctor.stdout, /specialist_owner unknown \(nobody\)/);
+    assert.match(doctor.stdout, /specialist_owner invalid \(bad owner!\)/);
   } finally {
     rmSync(packetRepo, { recursive: true, force: true });
   }
@@ -2140,9 +2195,9 @@ function testPacketRouteFieldLines() {
 - cross_workflow_completion: agentic-runner confirms whether specialist workflow routing is required
 - specialist_owner: agentic-runner
 - specialist_owner_label: Agentic Runner
-- specialist_ownership: control-plane routing, cross-workflow handoff, state, supervision, resume decisions, and final audit
-- agentic_runner_ownership: control-plane routing, cross-workflow handoff, state, supervision, resume decisions, and final audit
-- layer_boundary: Agentic Runner operates above coding-agents, Agentic StructCiv, and CodexVideo; it routes, supervises, resumes, and audits them instead of duplicating their specialist execution.`;
+- specialist_ownership: generic AGENT upper control-plane routing, cross-workflow handoff, state, supervision, resume decisions, and final audit
+- agentic_runner_ownership: generic AGENT upper control-plane routing, cross-workflow handoff, state, supervision, resume decisions, and final audit
+- layer_boundary: Agentic Runner operates as the generic AGENT upper control-plane above declared tool, skill, plugin, and specialist workflow owners; it routes, supervises, resumes, and audits them instead of duplicating their execution.`;
 }
 
 function stripSupervisionLines(text) {

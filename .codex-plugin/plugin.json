@@ -1,7 +1,7 @@
 {
   "name": "agentic-runner",
   "version": "0.1.0",
-  "description": "Agentic Runner control-plane for explicit cross-workflow routing, scoped assignments, handoff/resume, and audits across coding-agents, Agentic StructCiv, and CodexVideo. Primary route: use only for explicit or supervised control-plane work. Fallback: leaf workflows own single-domain tasks.",
+  "description": "Agentic Runner generic AGENT upper control-plane for mixed tool/skill/plugin workflows. Primary route: supervised orchestration. Fallback: leaf routes for single-domain tasks.",
   "skills": "./skills/",
   "keywords": [
     "agentic-runner",
@@ -16,6 +16,12 @@
     "workflow-router",
     "specialist-routing",
     "controlled-workflows",
+    "generic-agent-control-plane",
+    "tool-routing",
+    "skill-routing",
+    "plugin-routing",
+    "declared-workflows",
+    "custom-workflow-id",
     "coding-agents",
     "agentic-structciv",
     "codex-video",
@@ -37,8 +43,8 @@
   ],
   "interface": {
     "displayName": "Agentic Runner",
-    "shortDescription": "Explicit Agentic Runner control-plane routing for coding-agents, Agentic StructCiv, CodexVideo, handoff, resume, audit, and supervised assignments.",
-    "longDescription": "Coordinates route state for explicit Agentic Runner requests across coding-agents, Agentic StructCiv, and CodexVideo. Tracks handoff, resume, audit context, supervised assignments, and scoped Write boundaries while specialist workflows produce outputs.",
+    "shortDescription": "Generic AGENT upper control-plane for mixed tool, skill, plugin, workflow routing, handoff, resume, audit, and supervised assignments.",
+    "longDescription": "Coordinates route state for explicit or supervised complex requests across declared tools, skills, plugins, and specialist workflows. Tracks handoff, resume, audit context, scoped assignments, and Write boundaries while execution owners produce outputs.",
     "developerName": "suzukimakoto",
     "category": "Productivity",
     "capabilities": [
@@ -48,8 +54,8 @@
       "Audit"
     ],
     "defaultPrompt": [
-      "Use Agentic Runner for an explicit control-plane request across coding-agents, Agentic StructCiv, or CodexVideo.",
-      "Track handoff, resume, audit context, supervised assignments, and scoped Write boundaries."
+      "Use Agentic Runner as generic AGENT upper control-plane for complex tool/skill/plugin/workflow routing.",
+      "Track handoff, resume, audit, and supervised assignments; leave single-domain work to leaf routes."
     ],
     "brandColor": "#2563EB"
   },

@@ -1,8 +1,8 @@
 # Agentic Runner
 
-Agentic Runner is a thin control-plane plugin for explicit Agentic Runner requests. It records route state, handoff, resume checkpoints, audit context, scoped assignments, and supervision metadata for subordinate workflows such as `coding-agents`, Agentic StructCiv, and CodexVideo.
+Agentic Runner is a thin generic AGENT upper control-plane plugin for explicit Agentic Runner requests. It records route state, handoff, resume checkpoints, audit context, scoped assignments, and supervision metadata for declared subordinate owners such as tools, skills, plugins, MCP/app surfaces, `coding-agents`, Agentic StructCiv, CodexVideo, and future specialist workflows.
 
-It is not the execution owner for ordinary one-off coding, article, or video tasks. Specialist workflows produce domain artifacts; Agentic Runner keeps the route and cross-workflow state inspectable.
+It is not the execution owner for ordinary one-off single-domain tasks. Leaf tools, skills, plugins, and specialist workflows produce domain artifacts; Agentic Runner keeps the route and cross-workflow state inspectable.
 
 ## Use Cases
 

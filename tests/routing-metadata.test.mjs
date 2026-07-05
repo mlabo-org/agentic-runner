@@ -8,10 +8,12 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 
 const DISCOVERY_TERMS = [
   /Agentic Runner/,
+  /generic AGENT/i,
   /control-plane/i,
-  /coding-agents/,
-  /Agentic StructCiv/,
-  /CodexVideo/,
+  /tool/i,
+  /skill/i,
+  /plugin/i,
+  /workflow/i,
   /handoff/i,
   /resume/i,
   /audit/i,
@@ -75,16 +77,16 @@ test("skill contract preserves control-plane routing and subordinate ownership b
   const text = readFileSync(path.join(REPO_ROOT, "skills", "agentic-runner", "SKILL.md"), "utf8");
 
   assert.match(text, /## Specialist Workflow Routing/);
-  assert.match(text, /Agentic Runner is the upper control-plane/);
-  assert.match(text, /coding-agents.*subordinate execution workflow for code generation, debugging, source repair/s);
-  assert.match(text, /Agentic StructCiv.*subordinate execution workflow for article, BLOG, WordPress, SWELL/s);
-  assert.match(text, /CodexVideo.*subordinate execution workflow for video, short-form production/s);
+  assert.match(text, /Agentic Runner is the generic AGENT upper control-plane/);
+  assert.match(text, /Declared subordinate owners may be tools, skills, plugins, MCP\/app surfaces, specialist workflows, or future workflow ids/s);
+  assert.match(text, /Built-in subordinate workflow examples include `coding-agents`.*Agentic StructCiv.*CodexVideo/s);
   assert.match(text, /controlled_workflows/);
+  assert.match(text, /--controlled-workflows/);
   assert.match(text, /execution_owner/);
-  assert.match(text, /Do not treat Agentic Runner as a peer/);
+  assert.match(text, /Do not treat Agentic Runner as a peer of leaf tools, skills, plugins, or specialist workflows/);
   assert.match(text, /Mixed routes require it before appending runner state/);
   assert.match(text, /orchestrate.*never accepts `--runner`/s);
-  assert.match(text, /If a proposed implementation makes Agentic Runner generate code, articles, or video directly.*reconsider the route/s);
+  assert.match(text, /If a proposed implementation makes Agentic Runner perform leaf execution directly.*reconsider the route/s);
   assert.match(text, /## Self-Host Gate/);
   assert.match(text, /Self-host mode is allowed only when all conditions are met/);
 });
