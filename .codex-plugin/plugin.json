@@ -1,7 +1,7 @@
 {
   "name": "agentic-runner",
   "version": "0.1.0",
-  "description": "Agentic Runner control-plane for explicit routing of coding-agents, Agentic StructCiv, and CodexVideo with handoff, resume, audit, and supervised assignments.",
+  "description": "Agentic Runner control-plane for explicit cross-workflow routing, scoped assignments, handoff/resume, and audits across coding-agents, Agentic StructCiv, and CodexVideo. Primary route: use only for explicit or supervised control-plane work. Fallback: leaf workflows own single-domain tasks.",
   "skills": "./skills/",
   "keywords": [
     "agentic-runner",
