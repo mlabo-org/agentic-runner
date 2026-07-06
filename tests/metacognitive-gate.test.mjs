@@ -46,6 +46,25 @@ const META_ARGS = [
   "Monitor future runner-result normalization if codex-cli output format changes.",
 ];
 
+function contractCoverageArgs(taskId) {
+  const decisions = ["001", "002", "002A", "003", "004", "005", "006", "007", "008"].map((suffix) => `D-${taskId}-${suffix}`);
+  const completions = Array.from({ length: 10 }, (_, index) => `C-${taskId}-${String(index + 1).padStart(3, "0")}`);
+  return [
+    "--contract-coverage",
+    "required",
+    "--decision-coverage",
+    decisions
+      .map((id) => `${id}: verified in .agentic-runner decisions.md, route fields, runner.md, and verify-assignments output for ${id}`)
+      .join(" | "),
+    "--completion-coverage",
+    completions
+      .map((id) => `${id}: verified by .agentic-runner task.md, assignments.md, runner.md fields, and doctor output for ${id}`)
+      .join(" | "),
+    "--source-spec-coverage",
+    "no source specs in scope: checked task.md decisions.md route contract and documentation scope before collection",
+  ];
+}
+
 test("intake makes the metacognitive gate visible and verifiable for gate-required work", () => {
   const repo = makeTempGitRepo();
   try {
@@ -268,6 +287,7 @@ test("collect rejects completed gate-required packets without metacognitive fiel
       "--verification",
       "node --test",
       ...META_ARGS,
+      ...contractCoverageArgs("meta-collect"),
     ]);
 
     assert.equal(accepted.status, 0, accepted.stderr);
@@ -276,6 +296,118 @@ test("collect rejects completed gate-required packets without metacognitive fiel
     assert.match(runner, /status: completed/);
     assert.match(runner, /expected_outcome: completed gate-required work records the intended outcome/);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("collect rejects completed packets without concrete contract coverage", () => {
+  const repo = makeTempGitRepo();
+  try {
+    const taskId = "contract-coverage";
+    const intake = runCli([
+      "intake",
+      "--target-cwd",
+      repo,
+      "--work-type",
+      "documentation",
+      "--task",
+      "Document a completed workflow without source edits",
+      "--task-id",
+      taskId,
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+    ]);
+    assert.equal(intake.status, 0, intake.stderr);
+
+    const missingCoverage = runCli([
+      "collect",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Docs Keeper",
+      "--task-id",
+      taskId,
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--work-type",
+      "documentation",
+      "--status",
+      "completed",
+      "--findings",
+      "documentation update complete",
+      "--changed-files",
+      "README.md",
+      "--verification",
+      "not run",
+    ]);
+    assert.notEqual(missingCoverage.status, 0);
+    assert.match(missingCoverage.stderr, /Contract Coverage Gate/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const lowInfoCoverage = runCli([
+      "collect",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Docs Keeper",
+      "--task-id",
+      taskId,
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--work-type",
+      "documentation",
+      "--status",
+      "completed",
+      "--findings",
+      "documentation update complete",
+      "--changed-files",
+      "README.md",
+      "--verification",
+      "not run",
+      "--contract-coverage",
+      "required",
+      "--decision-coverage",
+      ["001", "002", "002A", "003", "004", "005", "006", "007", "008"].map((suffix) => `D-${taskId}-${suffix}: done`).join(" | "),
+      "--completion-coverage",
+      Array.from({ length: 10 }, (_, index) => `C-${taskId}-${String(index + 1).padStart(3, "0")}: done`).join(" | "),
+      "--source-spec-coverage",
+      "done",
+    ]);
+    assert.notEqual(lowInfoCoverage.status, 0);
+    assert.match(lowInfoCoverage.stderr, /decision_coverage|completion_coverage|source_spec_coverage/);
+
+    const accepted = runCli([
+      "collect",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Docs Keeper",
+      "--task-id",
+      taskId,
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--work-type",
+      "documentation",
+      "--status",
+      "completed",
+      "--findings",
+      "documentation update complete",
+      "--changed-files",
+      "README.md",
+      "--verification",
+      "not run",
+      ...contractCoverageArgs(taskId),
+    ]);
+    assert.equal(accepted.status, 0, accepted.stderr);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -349,6 +481,7 @@ test("source-change work triggers the metacognitive gate", () => {
       "bin/agentic-runner.mjs",
       "--verification",
       "not run",
+      ...contractCoverageArgs("meta-doc-work-type"),
     ]);
 
     assert.notEqual(rejected.status, 0);
@@ -437,6 +570,7 @@ test("documentation work type suppresses keyword and path inference for docs-onl
       "docs/debug-source-change.md",
       "--verification",
       "not run",
+      ...contractCoverageArgs("meta-doc-work-type"),
     ]);
     assert.equal(collected.status, 0, collected.stderr);
     const runner = readState(repo, "runner.md");
@@ -979,6 +1113,7 @@ test("non gate tasks do not require metacognitive completion fields", () => {
       "README.md",
       "--verification",
       "not run",
+      ...contractCoverageArgs("meta-non-gate"),
     ]);
     assert.equal(collected.status, 0, collected.stderr);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);

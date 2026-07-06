@@ -32,6 +32,17 @@ const METACOGNITIVE_PRE_GATE_BLOCKER =
   "pre-metacognitive-gate packet claimed completion without the required metacognitive result fields";
 const METACOGNITIVE_PRE_GATE_NEXT =
   "re-run or recollect the work with completed metacognitive gate fields before treating it as completion";
+const CONTRACT_COVERAGE_GATE_NAME = "Contract Coverage Gate";
+const CONTRACT_COVERAGE_FIELDS = [
+  "contract_coverage",
+  "decision_coverage",
+  "completion_coverage",
+  "source_spec_coverage",
+];
+const CONTRACT_COVERAGE_CONTRACT =
+  "Completed parent-integration packets must map every active accepted decision (D-*), route/spec contract, and completion condition (C-*) to concrete implementation and verification evidence before completion is accepted.";
+const CONTRACT_COVERAGE_COMPLETION_PROMPT =
+  "Generic done/checked/ok self-reports are not evidence; quote or name the decision/condition id and attach paths, commands, tests, artifacts, route-owner evidence, or explicit no-source-spec-in-scope evidence.";
 const NESTED_AGENTIC_RUNNER_PREFLIGHT =
   "Parent already selected Agentic Runner for this parent-managed scoped assignment; do not ask `agentic-runner を使いますか？ [Y/n]` and do not start an independent nested Agentic Runner workflow. Delegate descendants only when finite hierarchy fields grant remaining_depth > 0, keeping the same task_id/epoch/scope lineage and inherited supervision. Proceed directly within the assigned task_id/epoch/scope, but stop before scope expansion, destructive operations, external sending, commits, cache refresh, plugin activation, or unrelated edits.";
 const SUPERVISION_CONTRACT_NAME = "Subagent Supervision Contract";
@@ -93,9 +104,12 @@ const KNOWN_FLAG_KEYS = new Set([
   "before-context-effects",
   "blockers",
   "changed-files",
+  "completion-coverage",
+  "contract-coverage",
   "controlled-workflows",
   "cross-feature-consequences",
   "cwd",
+  "decision-coverage",
   "depth",
   "epoch",
   "execute",
@@ -127,6 +141,7 @@ const KNOWN_FLAG_KEYS = new Set([
   "scope",
   "skipped-checks",
   "soft-timeout",
+  "source-spec-coverage",
   "source-of-truth-boundary",
   "specialist-owner",
   "status",
@@ -680,6 +695,7 @@ Boundaries:
 - Agentic Runner owns the route map, handoff, state, supervision, and final audit; the specialist owner owns the assigned production work and evidence.
 - Do not claim success for unavailable, skipped, or failed checks.
 - ${DEBUG_INTEGRITY}
+${renderRunnerPromptContractCoverageGate(packet)}
 ${renderRunnerPromptMetacognitiveGate(packet)}
 
 ${renderSupervisionPromptSection(packet)}
@@ -694,6 +710,7 @@ Return exactly these sections, kept concise:
 - verification:
 - blockers:
 - unresolved_assumptions:
+${renderContractCoverageReturnSections(packet)}
 ${renderMetacognitiveReturnSections(packet)}
 - next:
 `;
@@ -888,6 +905,13 @@ function normalizeDebuggingIntegrity(args) {
   }
   assertNormalizableWorkflowIdentity(stateDir);
   const workflowGate = readWorkflowMetacognitiveContext(stateDir);
+  const contractContext = {
+    taskId: workflowGate.taskId,
+    epoch: workflowGate.epoch,
+    scope: workflowGate.scope,
+    task: workflowGate.task,
+    metacognitiveGate: workflowGate,
+  };
 
   const normalizers = {
     "README.md": normalizeReadmeDebugIntegrity,
@@ -906,7 +930,7 @@ function normalizeDebuggingIntegrity(args) {
     const filePath = path.join(stateDir, file);
     if (!existsSync(filePath)) continue;
     const current = readFileSync(filePath, "utf8");
-    const next = normalize(current, { workflowGate });
+    const next = normalize(current, { workflowGate, contractContext });
     if (next !== current) updates.push({ file, filePath, next });
   }
 
@@ -1048,6 +1072,7 @@ Operational log:
 - ${SUPERVISION_NO_INTERRUPT}
 - ${DEBUG_INTEGRITY}
 ${renderMetacognitiveGateState(context.metacognitiveGate)}
+- ${CONTRACT_COVERAGE_CONTRACT}
 `;
 }
 
@@ -1072,7 +1097,24 @@ ${renderRouteDecisionFields(context)}
 `;
 }
 
+function taskCompletionConditions(context) {
+  const prefix = `C-${context.taskId}`;
+  return [
+    { id: `${prefix}-001`, text: `Eight planning files exist in \`${STATE_DIR_NAME}\`.` },
+    { id: `${prefix}-002`, text: "Fixed 14-role assignment scaffold sections include `role`, `status`, `task_id`, `epoch`, `scope`, `assignment`, `expected_output`, and `lifecycle`." },
+    { id: `${prefix}-003`, text: "Each generated assignment carries lifecycle guidance requiring concise integration material and prompt close/retire handling." },
+    { id: `${prefix}-004`, text: "Each generated child-worker prompt, assignment, handoff, and runner packet carries the nested Agentic Runner preflight suppression rule." },
+    { id: `${prefix}-005`, text: `Each generated child-worker prompt, assignment, handoff, and modern runner packet carries the ${SUPERVISION_CONTRACT_NAME}.` },
+    { id: `${prefix}-006`, text: "Route and specialist ownership are recorded before production work begins; Agentic Runner must not degrade into a generic code generator for specialist-owned article, video, or source tasks." },
+    { id: `${prefix}-007`, text: "Debug or repair work is not complete until root cause is identified, fixed, and verified against the intended outcome." },
+    { id: `${prefix}-008`, text: "If `metacognitive_gate_required: true`, assignments, runner prompts, runner packets, and completed parent-integration packets must carry all metacognitive gate fields." },
+    { id: `${prefix}-009`, text: "Completed parent-integration packets carry Contract Coverage Gate evidence for every active D-* accepted decision, route/spec contract, and C-* completion condition." },
+    { id: `${prefix}-010`, text: "Handoff prompt is available for the next worker." },
+  ];
+}
+
 function renderTask(context) {
+  const completionConditions = taskCompletionConditions(context);
   return `# Active Task
 
 - task_id: ${context.taskId}
@@ -1095,6 +1137,10 @@ ${renderRouteDecisionFields(context)}
 
 ${renderMetacognitiveGateState(context.metacognitiveGate)}
 
+## ${CONTRACT_COVERAGE_GATE_NAME}
+
+${renderContractCoverageGateState(context)}
+
 ## ${SELF_HOST_GATE_NAME}
 
 - self_host_target: ${context.selfHostTarget}
@@ -1104,15 +1150,7 @@ ${renderMetacognitiveGateState(context.metacognitiveGate)}
 
 ## Completion Conditions
 
-- Eight planning files exist in \`${STATE_DIR_NAME}\`.
-- Fixed 14-role assignment scaffold sections include \`role\`, \`status\`, \`task_id\`, \`epoch\`, \`scope\`, \`assignment\`, \`expected_output\`, and \`lifecycle\`.
-- Each generated assignment carries lifecycle guidance requiring concise integration material and prompt close/retire handling.
-- Each generated child-worker prompt, assignment, handoff, and runner packet carries the nested Agentic Runner preflight suppression rule.
-- Each generated child-worker prompt, assignment, handoff, and modern runner packet carries the ${SUPERVISION_CONTRACT_NAME}.
-- Route and specialist ownership are recorded before production work begins; Agentic Runner must not degrade into a generic code generator for specialist-owned article, video, or source tasks.
-- Debug or repair work is not complete until root cause is identified, fixed, and verified against the intended outcome.
-- If \`metacognitive_gate_required: true\`, assignments, runner prompts, runner packets, and completed parent-integration packets must carry all metacognitive gate fields.
-- Handoff prompt is available for the next worker.
+${completionConditions.map(({ id, text }) => `- ${id}: ${text}`).join("\n")}
 `;
 }
 
@@ -1134,11 +1172,13 @@ function renderDecisions(context) {
 
 - accepted: use \`task_id=${context.taskId}\`, \`epoch=${context.epoch}\`, and \`scope=${context.scope}\` for this job.
 - impact: each role assignment must stay inside the declared scope.
+- contract_coverage_required: implementation and verification evidence must show changed files and runner packets stayed inside this declared scope.
 
 ## D-${context.taskId}-002 Marketplace Deferred
 
 - accepted: this MVP writes only target project \`${STATE_DIR_NAME}\` state files.
 - impact: marketplace and plugin cache activation remain out of band.
+- contract_coverage_required: evidence must state whether marketplace, cache refresh, plugin activation, or restart boundaries were touched or deferred.
 
 ## D-${context.taskId}-002A Specialist Workflow Route
 
@@ -1148,21 +1188,25 @@ function renderDecisions(context) {
 - verification_owners: ${formatList(context.routeDecision.verificationOwners)}
 - handoff_artifacts: ${formatList(context.routeDecision.handoffArtifacts)}
 - impact: Agentic Runner owns the route map, stateful handoff, supervision, and cross-workflow audit; selected specialist workflows own production artifacts and verification evidence.
+- contract_coverage_required: evidence must map specialist owner, artifact owner, verification owner, handoff artifact, and cross-workflow completion to concrete returned evidence.
 
 ## D-${context.taskId}-003 Subagent Lifecycle Closure
 
 - accepted: subagents return concise parent-integration material and do not remain open waiting for more work.
 - impact: parent closes or retires no-longer-needed subagents after integration, timeout/failure/blocker handling, stale premise/scope change, and before final report.
+- contract_coverage_required: evidence must name collected worker results and close/retire status, or state that no workers were spawned.
 
 ## D-${context.taskId}-004 Debugging Integrity
 
 - accepted: debug or repair work must identify root cause and restore the intended outcome.
 - impact: log-only, fallback-only, skip-only, failure-output-only, and return-to-main-loop-only changes are temporary containment at most and must not be accepted as completion.
+- contract_coverage_required: evidence must separate root cause, fix, and intended-outcome verification for debug or repair work, or state why this task is not debug/repair.
 
 ## D-${context.taskId}-005 Nested Agentic Runner Preflight Suppression
 
 - accepted: parent-managed child workers must not ask whether to use Agentic Runner again or start an independent nested Agentic Runner workflow.
 - impact: generated worker material must direct child workers to proceed inside task_id, epoch, scope, finite hierarchy, and supervision lineage while still stopping for scope expansion, destructive operations, external sending, commits, cache refresh, plugin activation, or unrelated edits.
+- contract_coverage_required: evidence must show generated assignment, handoff, runner prompt, or runner packet material carries this suppression rule when worker material is produced.
 
 ## D-${context.taskId}-006 ${METACOGNITIVE_GATE_NAME}
 
@@ -1170,18 +1214,21 @@ function renderDecisions(context) {
 - work_type: ${workTypeId(context)}
 - triggers: ${formatTriggers(context.metacognitiveGate)}
 - impact: gate-required work must record expected/actual outcome evidence, boundaries, before/after context effects, cross-feature consequences, root cause, fix, verification, skipped checks, unresolved risks, and next investigation before completion is accepted.
+- contract_coverage_required: evidence must show completed packets contain all required metacognitive fields when this gate is required, or state that it was not required.
 
 ## D-${context.taskId}-007 ${SELF_HOST_GATE_NAME}
 
 - accepted: self_host_target=${context.selfHostTarget} and self_host_gate=${context.selfHostGate}.
 - source_git_root: ${context.sourceGitRoot || "unavailable"}
 - impact: Agentic Runner source edits remain external-supervised by default; self-hosted state writes against the Agentic Runner source repository require an explicit \`--target-cwd\` and do not authorize commits, cache refresh, activation, destructive actions, or scope expansion.
+- contract_coverage_required: evidence must state whether Agentic Runner source self-hosting was used, and confirm commits/cache refresh/activation/destructive actions remained separately authorized.
 
 ## D-${context.taskId}-008 ${SUPERVISION_CONTRACT_NAME}
 
 - accepted: silence before heartbeat deadline is neutral, and heartbeat is telemetry rather than completion evidence.
 - retire_cancel_reasons: ${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}
 - impact: parent does not cancel, interrupt, retire, or replace a quiet worker during the no-interrupt window; stale timeout requires missed heartbeat, soft ping/status request, grace wait, stale mark, and only then cancel/replace if still silent or invalid.
+- contract_coverage_required: evidence must show supervision fields exist in generated assignment, handoff, and runner material, or name the skipped surface.
 `;
 }
 
@@ -1215,6 +1262,7 @@ ${renderRouteDecisionFields(context)}
 - Record any retire/cancel action with one explicit reason from ${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}.
 - For debug or repair work, record root cause, fix, and verification that the intended outcome now succeeds.
 - If metacognitive_gate_required is true, record ${METACOGNITIVE_GATE_FIELDS.join(", ")}.
+- Record ${CONTRACT_COVERAGE_GATE_NAME}: ${CONTRACT_COVERAGE_FIELDS.join(", ")}. Completed work is not accepted until every D-* decision, route/spec contract, and C-* completion condition has concrete implementation and verification evidence.
 `;
 }
 
@@ -1233,7 +1281,7 @@ function renderAssignments(context) {
     UX: ["scaffolded", "Assess user-facing workflow clarity.", "UX notes and friction points."],
     Dependency: ["scaffolded", "Check dependency boundaries and avoid unapproved installs.", "Dependency impact notes."],
     DevOps: ["scaffolded", "Check runnable commands, Git state, and release boundaries.", "Operational readiness notes."],
-    Auditor: ["scaffolded", "Compare outcomes against task_id, epoch, scope, completion conditions, and the debugging integrity gate.", "Final audit result with debug root-cause status when applicable."],
+    Auditor: ["scaffolded", `Compare outcomes against task_id, epoch, scope, accepted decisions, route/spec contracts, completion conditions, the ${CONTRACT_COVERAGE_GATE_NAME}, and the debugging integrity gate.`, "Final audit result with D-*/C-* contract coverage evidence, route-owner verification, and debug root-cause status when applicable."],
   };
 
   return `# Role Assignment Scaffold
@@ -1259,6 +1307,10 @@ ${renderRouteDecisionFields(context)}
 
 ${renderMetacognitiveGateState(context.metacognitiveGate)}
 
+${CONTRACT_COVERAGE_GATE_NAME}:
+
+${renderContractCoverageGateState(context)}
+
 ## Nested Agentic Runner Preflight
 
 - ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
@@ -1278,6 +1330,7 @@ ${renderRoleRouteFields(context)}
 - assignment: ${assignment}
 - expected_output: ${expectedOutput}
 ${renderSupervisionFields()}
+${renderContractCoveragePacketSchema(context)}
 ${renderMetacognitiveGatePacketSchema(context.metacognitiveGate)}
 - lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
 }).join("\n\n")}
@@ -1319,6 +1372,9 @@ Debugging integrity:
 ${METACOGNITIVE_GATE_NAME}:
 ${renderMetacognitiveGateState(context.metacognitiveGate)}
 
+${CONTRACT_COVERAGE_GATE_NAME}:
+${renderContractCoverageGateState(context)}
+
 Subagent lifecycle:
 - Child workers return concise parent-integration material and stop instead of waiting for more work.
 - The parent closes or retires subagents after completed result integration, timeout/failure/blocker handling, stale premise/scope change, and before final report when no further use is expected.
@@ -1351,7 +1407,8 @@ function normalizeReadmeDebugIntegrity(text, context = {}) {
       );
     }
     next = normalizeReadmeSupervision(next);
-    return normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+    next = normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+    return normalizeDocumentContractCoverageGate(next, context.contractContext);
   });
 }
 
@@ -1371,7 +1428,9 @@ function normalizeTaskDebugIntegrity(text, context = {}) {
       next = insertAfterLineMatching(next, new RegExp(`^${escapeRegExp(lifecycleLine)}$`, "m"), block, block);
     }
     next = normalizeTaskSupervision(next);
-    return normalizeTaskMetacognitiveGate(next, context.workflowGate);
+    next = normalizeTaskCompletionConditions(next, context.contractContext);
+    next = normalizeTaskMetacognitiveGate(next, context.workflowGate);
+    return normalizeTaskContractCoverageGate(next, context.contractContext);
   });
 }
 
@@ -1404,7 +1463,8 @@ function normalizeAssignmentsDebugIntegrity(text, context = {}) {
 - For debug or repair tasks, integration material must include expected outcome, actual failure, reproduction path, failure point, root cause, fix, and verification.`;
     if (!next.includes(DEBUG_INTEGRITY)) next = insertAfterRoleScaffoldHeading(next, block);
     next = normalizeAssignmentsSupervision(next);
-    return normalizeAssignmentsMetacognitiveGate(next, context.workflowGate);
+    next = normalizeAssignmentsMetacognitiveGate(next, context.workflowGate);
+    return normalizeAssignmentsContractCoverageGate(next, context.contractContext);
   });
 }
 
@@ -1423,7 +1483,8 @@ function normalizeHandoffDebugIntegrity(text, context = {}) {
       }
     }
     next = normalizeHandoffSupervision(next);
-    return normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+    next = normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+    return normalizeDocumentContractCoverageGate(next, context.contractContext);
   });
 }
 
@@ -1440,21 +1501,30 @@ function normalizeRunnerDebugIntegrity(text, context = {}) {
   next = normalizeRunnerPreambleSupervision(next);
 
   const packets = getModernRunnerPacketSections(next);
-  if (!packets.length) return normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+  if (!packets.length) {
+    next = normalizeDocumentMetacognitiveGate(next, context.workflowGate);
+    return normalizeDocumentContractCoverageGate(next, context.contractContext);
+  }
   const firstPacket = next.indexOf(packets[0]);
   const preamble = next.slice(0, firstPacket);
   let cursor = firstPacket;
-  const normalizedPreamble = validateMetacognitiveGateText(preamble).valid
-    ? preamble
-    : normalizeDocumentMetacognitiveGate(preamble, context.workflowGate);
+  const normalizedPreamble = normalizeDocumentContractCoverageGate(
+    validateMetacognitiveGateText(preamble).valid
+      ? preamble
+      : normalizeDocumentMetacognitiveGate(preamble, context.workflowGate),
+    context.contractContext,
+  );
   let normalizedPackets = "";
   for (const packet of packets) {
     const packetStart = next.indexOf(packet, cursor);
     if (packetStart === -1) continue;
     normalizedPackets += next.slice(cursor, packetStart);
-    normalizedPackets += normalizeRunnerPacketMetacognitiveGate(
-      normalizeRunnerPacketSupervision(normalizeRunnerPacketDebugIntegrity(packet)),
-      context.workflowGate,
+    normalizedPackets += normalizeRunnerPacketContractCoverage(
+      normalizeRunnerPacketMetacognitiveGate(
+        normalizeRunnerPacketSupervision(normalizeRunnerPacketDebugIntegrity(packet)),
+        context.workflowGate,
+      ),
+      context.contractContext,
     );
     cursor = packetStart + packet.length;
   }
@@ -1596,6 +1666,25 @@ ${renderMetacognitiveGateState(gate)}`;
   return `${text.trimEnd()}\n\n${block}\n`;
 }
 
+function normalizeDocumentContractCoverageGate(text, context = {}) {
+  if (!context?.taskId || validateContractCoverageGateText(text).valid) return text;
+  const block = `${CONTRACT_COVERAGE_GATE_NAME}:
+
+${renderContractCoverageGateState(context)}`;
+  if (validateMetacognitiveGateText(text).valid) {
+    return insertAfterLineMatching(
+      text,
+      /^- metacognitive_gate_contract: .*$/m,
+      block,
+      block,
+    );
+  }
+  if (text.includes(DEBUG_INTEGRITY)) {
+    return insertAfterLineMatching(text, new RegExp(`^- ${escapeRegExp(DEBUG_INTEGRITY)}$`, "m"), block, block);
+  }
+  return `${text.trimEnd()}\n\n${block}\n`;
+}
+
 function normalizeTaskMetacognitiveGate(text, gate) {
   if (!gate?.required || validateMetacognitiveGateText(text).valid) return text;
   const block = `## ${METACOGNITIVE_GATE_NAME}
@@ -1604,6 +1693,35 @@ ${renderMetacognitiveGateState(gate)}`;
   if (/^- task: .*$/m.test(text)) {
     return insertAfterLineMatching(text, /^- task: .*$/m, block, block);
   }
+  if (/^## Completion Conditions$/m.test(text)) {
+    return text.replace(/^## Completion Conditions$/m, `${block}\n\n## Completion Conditions`);
+  }
+  return `${text.trimEnd()}\n\n${block}\n`;
+}
+
+function normalizeTaskCompletionConditions(text, context = {}) {
+  const taskId = getFieldValue(text, "task_id") || context.taskId;
+  if (!taskId) return text;
+  const conditionContext = { ...context, taskId };
+  const currentPrefix = `C-${taskId}-`;
+  let next = String(text || "")
+    .split(/\r?\n/)
+    .filter((line) => !/^- C-\S+?:/.test(line) || line.startsWith(`- ${currentPrefix}`))
+    .join("\n");
+  const missing = taskCompletionConditions(conditionContext).filter(({ id }) => !new RegExp(`^-\\s+${escapeRegExp(id)}:`, "m").test(next));
+  if (!missing.length) return next;
+  const lines = missing.map(({ id, text: condition }) => `- ${id}: ${condition}`).join("\n");
+  if (/^## Completion Conditions$/m.test(next)) {
+    return insertAfterHeading(next, "## Completion Conditions", lines);
+  }
+  return `${next.trimEnd()}\n\n## Completion Conditions\n\n${lines}\n`;
+}
+
+function normalizeTaskContractCoverageGate(text, context = {}) {
+  if (!context?.taskId || validateContractCoverageGateText(text).valid) return text;
+  const block = `## ${CONTRACT_COVERAGE_GATE_NAME}
+
+${renderContractCoverageGateState(context)}`;
   if (/^## Completion Conditions$/m.test(text)) {
     return text.replace(/^## Completion Conditions$/m, `${block}\n\n## Completion Conditions`);
   }
@@ -1623,6 +1741,23 @@ ${renderMetacognitiveGateState(gate)}`;
     const section = getRoleSection(next, role);
     if (!section || validateMetacognitiveGateText(section).valid) continue;
     next = next.replace(section, ensureMetacognitiveGateSchemaInSection(section, gate));
+  }
+  return next;
+}
+
+function normalizeAssignmentsContractCoverageGate(text, context = {}) {
+  if (!context?.taskId) return text;
+  let next = text;
+  if (!validateContractCoverageGateText(next).valid) {
+    const block = `${CONTRACT_COVERAGE_GATE_NAME}:
+
+${renderContractCoverageGateState(context)}`;
+    next = insertAfterRoleScaffoldHeading(next, block);
+  }
+  for (const role of ROLES) {
+    const section = getRoleSection(next, role);
+    if (!section || validateContractCoverageGateText(section).valid) continue;
+    next = next.replace(section, ensureContractCoverageGateSchemaInSection(section, context));
   }
   return next;
 }
@@ -1647,6 +1782,31 @@ function normalizeRunnerPacketMetacognitiveGate(section, workflowGate) {
 function ensureMetacognitiveGateSchemaInSection(section, gate) {
   let next = section;
   for (const line of renderMetacognitiveGatePacketSchema(gate).split("\n").filter(Boolean)) {
+    const match = /^- ([^:]+):\s*(.*)$/.exec(line);
+    if (!match) continue;
+    next = upsertFieldBeforeLifecycle(next, match[1], match[2]);
+  }
+  return next;
+}
+
+function normalizeRunnerPacketContractCoverage(section, context = {}) {
+  const type = getFieldValue(section, "type");
+  if (!["assignment", "parent-integration", "process-orchestration-skeleton", "orchestration-state", "process-runner-result"].includes(type)) {
+    return section;
+  }
+  if (!context?.taskId || runnerPacketUsesLegacySchema(section)) return section;
+  let next = ensureContractCoverageGateSchemaInSection(section, context);
+  const status = normalizeStatus(getFieldValue(next, "status"));
+  if (type === "parent-integration" && isCompletionStatus(status)) {
+    const missing = missingContractCoverageFields(next, contractCoverageIdsForContext(context));
+    if (missing.length) next = markPreGateCompletionUnresolved(next, type);
+  }
+  return next;
+}
+
+function ensureContractCoverageGateSchemaInSection(section, context = {}) {
+  let next = section;
+  for (const line of renderContractCoveragePacketSchema(context).split("\n").filter(Boolean)) {
     const match = /^- ([^:]+):\s*(.*)$/.exec(line);
     if (!match) continue;
     next = upsertFieldBeforeLifecycle(next, match[1], match[2]);
@@ -1766,10 +1926,15 @@ function requireIntegrationPacket(args, commandContext) {
     blockers: singleLine(args.blockers || "none"),
     assumptions: singleLine(args.assumptions || "none"),
     next: singleLine(args.next || "parent integrate packet"),
+    contractCoverage: singleLine(args.contractCoverage || "required"),
+    decisionCoverage: singleLine(args.decisionCoverage || "not provided"),
+    completionCoverage: singleLine(args.completionCoverage || "not provided"),
+    sourceSpecCoverage: singleLine(args.sourceSpecCoverage || "not provided"),
   };
   packet.metacognitiveGate = resolvePacketMetacognitiveGate(commandContext, packet);
   packet.metacognitiveFields = readMetacognitiveArgs(args);
   validateIntegrationMetacognitivePacket(commandContext, packet);
+  validateIntegrationContractCoveragePacket(commandContext, packet);
   return packet;
 }
 
@@ -2014,6 +2179,7 @@ ${renderPacketRouteFields(packet)}
 - nested_agentic_runner_preflight: ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(packet)}
+${renderContractCoveragePacketSchema(packet)}
 ${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
 - lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
 }
@@ -2039,6 +2205,7 @@ ${renderPacketRouteFields(packet)}
 - next: ${packet.next}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(packet)}
+${renderContractCoverageResultFields(packet)}
 ${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
 ${renderMetacognitiveResultFields(packet.metacognitiveGate, "not completed", packet.metacognitiveFields, {
   includeAll: isCompletionStatus(packet.status),
@@ -2066,6 +2233,7 @@ ${renderPacketRouteFields(packet)}
 - nested_agentic_runner_preflight: ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(packet)}
+${renderContractCoveragePacketSchema(packet)}
 ${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
 - lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
 }
@@ -2094,6 +2262,7 @@ ${renderPacketRouteFields(packet)}
 - nested_agentic_runner_preflight: ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(packet)}
+${renderContractCoveragePacketSchema(packet)}
 ${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
 - lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
 }
@@ -2143,6 +2312,7 @@ ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 Agentic Runner is the upper control-plane for routing, handoff, supervision, resume checkpoints, and final cross-workflow audit; specialist workflows own subordinate execution evidence.
 ${renderSupervisionFields()}
 ${DEBUG_INTEGRITY}
+${renderContractCoveragePacketSchema(commandContext)}
 ${METACOGNITIVE_GATE_CONTRACT}
 `;
   const current = existsSync(runnerPath) ? readFileSync(runnerPath, "utf8") : initial;
@@ -2175,6 +2345,7 @@ function validateAssignmentFiles(stateDir) {
   let checkedFiles = 0;
   const assignmentPath = path.join(stateDir, "assignments.md");
   const workflowGate = readWorkflowMetacognitiveContext(stateDir);
+  const contractCoverage = readWorkflowContractCoverageContext(stateDir);
   const identity = readWorkflowTaskIdentity(stateDir);
   const routeRequired = workflowStateHasRouteDecision(stateDir);
 
@@ -2198,12 +2369,18 @@ function validateAssignmentFiles(stateDir) {
     const roleValidation = validateRoleAssignments(text, workflowGate, { routeRequired });
     results.push(...roleValidation.results);
     fatal = fatal || roleValidation.fatal;
+    const contractGate = validateContractCoverageGateText(text);
+    if (contractGate.valid) results.push(["ok", "contract coverage gate present in assignments"]);
+    else {
+      results.push(["warn", `contract coverage gate missing from assignments: ${contractGate.missing.join(", ")}`]);
+      fatal = true;
+    }
   }
 
   const runnerPath = path.join(stateDir, RUNNER_FILE);
   if (existsSync(runnerPath)) {
     checkedFiles += 1;
-    const runnerValidation = validateRunnerPackets(readFileSync(runnerPath, "utf8"), workflowGate, { routeRequired });
+    const runnerValidation = validateRunnerPackets(readFileSync(runnerPath, "utf8"), workflowGate, { routeRequired, contractCoverage });
     results.push(...runnerValidation.results);
     fatal = fatal || runnerValidation.fatal;
   }
@@ -2397,6 +2574,7 @@ function validateRunnerPackets(text, workflowGate = { required: false }, options
   const invalidRoutePackets = [];
   const invalidSupervisionPackets = [];
   const invalidMetacognitivePackets = [];
+  const invalidContractCoveragePackets = [];
   let checked = 0;
 
   for (const section of sections) {
@@ -2451,7 +2629,7 @@ function validateRunnerPackets(text, workflowGate = { required: false }, options
       for (const missing of supervision.missing) invalidSupervisionPackets.push(`${packetLabel(section)}.${missing}`);
     }
 
-    if (options.routeRequired && !runnerPacketUsesLegacySchema(section)) {
+    if (options.routeRequired && !runnerPacketUsesLegacySchema(section) && isCurrentWorkflowPacket(section, workflowGate)) {
       for (const routeError of validateRouteDecisionFields(section, packetLabel(section), { requireSpecialistOwner: true })) {
         invalidRoutePackets.push(routeError);
       }
@@ -2474,9 +2652,24 @@ function validateRunnerPackets(text, workflowGate = { required: false }, options
         for (const field of missing) invalidMetacognitivePackets.push(`${packetLabel(section)}.${field}`);
       }
     }
+    if (
+      type === "parent-integration"
+      && !runnerPacketUsesLegacySchema(section)
+      && isCurrentWorkflowPacket(section, workflowGate)
+      && isCompletionStatus(getFieldValue(section, "status"))
+    ) {
+      const missing = missingContractCoverageFields(section, options.contractCoverage || { decisionIds: [], completionIds: [] });
+      for (const field of missing) invalidContractCoveragePackets.push(`${packetLabel(section)}.${field}`);
+    }
   }
 
-  if (invalidPackets.length === 0 && invalidRoutePackets.length === 0 && invalidSupervisionPackets.length === 0 && invalidMetacognitivePackets.length === 0) {
+  if (
+    invalidPackets.length === 0
+    && invalidRoutePackets.length === 0
+    && invalidSupervisionPackets.length === 0
+    && invalidMetacognitivePackets.length === 0
+    && invalidContractCoveragePackets.length === 0
+  ) {
     return { results: [["ok", `runner packets valid (${checked} checked)`]], fatal: false };
   }
   const results = [];
@@ -2488,7 +2681,18 @@ function validateRunnerPackets(text, workflowGate = { required: false }, options
   if (invalidMetacognitivePackets.length) {
     results.push(["warn", `missing or incomplete metacognitive runner packet fields: ${invalidMetacognitivePackets.join(", ")}`]);
   }
+  if (invalidContractCoveragePackets.length) {
+    results.push(["warn", `missing or incomplete contract coverage runner packet fields: ${invalidContractCoveragePackets.join(", ")}`]);
+  }
   return { results, fatal: true };
+}
+
+function isCurrentWorkflowPacket(section, workflowGate) {
+  if (!workflowGate?.taskId) return false;
+  if (getFieldValue(section, "task_id") !== workflowGate.taskId) return false;
+  if (workflowGate.epoch && getFieldValue(section, "epoch") !== workflowGate.epoch) return false;
+  if (workflowGate.scope && getFieldValue(section, "scope") !== workflowGate.scope) return false;
+  return true;
 }
 
 function getModernRunnerPacketSections(text) {
@@ -2579,6 +2783,26 @@ function readWorkflowMetacognitiveContext(stateDir) {
   };
 }
 
+function readWorkflowContractCoverageContext(stateDir) {
+  const taskPath = path.join(stateDir, "task.md");
+  const decisionsPath = path.join(stateDir, "decisions.md");
+  const taskText = existsSync(taskPath) ? readFileSync(taskPath, "utf8") : "";
+  const decisionsText = existsSync(decisionsPath) ? readFileSync(decisionsPath, "utf8") : "";
+  return {
+    decisionIds: extractContractIds(decisionsText, "D"),
+    completionIds: extractContractIds(taskText, "C"),
+  };
+}
+
+function extractContractIds(text, prefix) {
+  const ids = new Set();
+  const pattern = prefix === "D" ? /^##\s+(D-\S+)/gm : /^-\s+(C-\S+?):/gm;
+  for (const match of String(text || "").matchAll(pattern)) {
+    ids.add(match[1].replace(/[:.,;]+$/g, ""));
+  }
+  return [...ids];
+}
+
 function resolvePacketMetacognitiveGate(commandContext, packet) {
   const state = resolveWorkflowState(commandContext.targetCwd);
   const workflowGate = readWorkflowMetacognitiveContext(state.stateDir);
@@ -2663,6 +2887,90 @@ function validateIntegrationMetacognitivePacket(commandContext, packet) {
   }
 }
 
+function validateIntegrationContractCoveragePacket(commandContext, packet) {
+  const status = normalizeStatus(packet.status);
+  if (!isCompletionStatus(status)) return;
+  const state = resolveWorkflowState(commandContext.targetCwd);
+  const contractCoverage = readWorkflowContractCoverageContext(state.stateDir);
+  const missing = missingContractCoverageFields(packet, contractCoverage);
+  if (missing.length) {
+    throw new CliError(
+      `collect --status ${packet.status} rejected: ${CONTRACT_COVERAGE_GATE_NAME} fields missing or incomplete: ${missing.join(", ")}`,
+      1,
+    );
+  }
+}
+
+function missingContractCoverageFields(source, contractCoverage) {
+  const missing = [];
+  const contractCoverageValue = getCoverageValue(source, "contract_coverage", "contractCoverage");
+  if (normalizeEvidenceValue(contractCoverageValue) !== "required") missing.push("contract_coverage");
+
+  const decisionCoverage = getCoverageValue(source, "decision_coverage", "decisionCoverage");
+  for (const id of contractCoverage.decisionIds || []) {
+    const segment = coverageSegmentForId(decisionCoverage, id, contractCoverage.decisionIds);
+    if (!isContractCoverageSegmentEvidenceLike(segment, "decision")) missing.push(`decision_coverage.${id}`);
+  }
+
+  const completionCoverage = getCoverageValue(source, "completion_coverage", "completionCoverage");
+  for (const id of contractCoverage.completionIds || []) {
+    const segment = coverageSegmentForId(completionCoverage, id, contractCoverage.completionIds);
+    if (!isContractCoverageSegmentEvidenceLike(segment, "completion")) missing.push(`completion_coverage.${id}`);
+  }
+
+  const sourceSpecCoverage = getCoverageValue(source, "source_spec_coverage", "sourceSpecCoverage");
+  if (!isSourceSpecCoverageEvidenceLike(sourceSpecCoverage)) missing.push("source_spec_coverage");
+  return missing;
+}
+
+function getCoverageValue(source, field, property) {
+  if (typeof source === "string") return getAnyFieldValue(source, field) || "";
+  return source?.[property] || "";
+}
+
+function coverageSegmentForId(value, id, ids) {
+  const text = String(value || "");
+  const start = text.indexOf(id);
+  if (start === -1) return "";
+  let end = text.length;
+  for (const otherId of ids || []) {
+    if (otherId === id) continue;
+    const otherStart = text.indexOf(otherId, start + id.length);
+    if (otherStart !== -1 && otherStart < end) end = otherStart;
+  }
+  return text.slice(start + id.length, end).replace(/^[:=\s-]+/, "").trim();
+}
+
+function isContractCoverageSegmentEvidenceLike(value, kind) {
+  const text = String(value || "").trim();
+  if (isMetacognitiveNoEvidenceValue(text)) return false;
+  if (isGenericSelfReportOnly(normalizeEvidenceValue(text))) return false;
+  if (kind === "completion") {
+    return countEvidenceWords(text) >= 4
+      && (
+        hasVerificationEvidence(text)
+        || /\b(?:exists?|present|carr(?:y|ies)|includes?|records?|checked|verified|audit|evidence|condition|field|fields|passed|failed|route|owner)\b/i.test(text)
+      );
+  }
+  return countEvidenceWords(text) >= 5
+    && hasConcreteEvidenceMarker(text)
+    && /\b(?:implement(?:ed|ation)?|verif(?:y|ied|ication)|test(?:ed|s)?|doctor|scope|cache|state|runner|assignment|handoff|audit|evidence|deferred|recorded|kept|preserved|prevented|blocked|rejected|enforced|source|file|path|route|owner|specialist|workflow)\b/i.test(text);
+}
+
+function isSourceSpecCoverageEvidenceLike(value) {
+  const text = String(value || "").trim();
+  if (isMetacognitiveNoEvidenceValue(text)) return false;
+  if (/no\s+(?:source\s+)?spec(?:s)?\s+(?:in\s+)?scope/i.test(text)) {
+    return countEvidenceWords(text) >= 6
+      && /\b(?:checked|task|scope|decisions|docs|spec|source|route|none|not found)\b/i.test(text);
+  }
+  return countEvidenceWords(text) >= 5
+    && (
+      hasPathEvidence(text)
+      || /\b(?:source\s+spec|specification|spec|requirements?|accepted decisions?|completion conditions?|route contract|workflow owner|specialist owner|user request|handoff|task\.md|decisions\.md)\b/i.test(text)
+    );
+}
+
 function readMetacognitiveArgs(args) {
   const fields = {};
   for (const field of METACOGNITIVE_GATE_FIELDS) {
@@ -2682,6 +2990,23 @@ function validateMetacognitiveGateText(text) {
     for (const field of METACOGNITIVE_GATE_FIELDS) {
       if (!fieldList.includes(field)) missing.push(`metacognitive_gate_fields.${field}`);
     }
+  }
+  return { valid: missing.length === 0, missing };
+}
+
+function validateContractCoverageGateText(text) {
+  const missing = [];
+  if (!String(text || "").includes(CONTRACT_COVERAGE_GATE_NAME)) missing.push("contract_coverage_gate");
+  const fields = splitList(getAnyFieldValue(text, "contract_coverage_fields"));
+  if (!fields.length) missing.push("contract_coverage_fields");
+  else {
+    for (const field of CONTRACT_COVERAGE_FIELDS) {
+      if (!fields.includes(field)) missing.push(`contract_coverage_fields.${field}`);
+    }
+  }
+  const prompt = getAnyFieldValue(text, "contract_coverage_completion_prompt");
+  if (!prompt || !/Generic done\/checked\/ok self-reports are not evidence/i.test(prompt)) {
+    missing.push("contract_coverage_completion_prompt");
   }
   return { valid: missing.length === 0, missing };
 }
@@ -2998,6 +3323,66 @@ function renderMetacognitiveGateState(gate) {
 - metacognitive_gate_triggers: ${formatTriggers(normalized)}
 - metacognitive_gate_fields: ${METACOGNITIVE_GATE_FIELDS.join(", ")}
 - metacognitive_gate_contract: ${METACOGNITIVE_GATE_CONTRACT}`;
+}
+
+function renderContractCoverageGateState(context) {
+  return `- contract_coverage_gate: ${CONTRACT_COVERAGE_GATE_NAME}
+- contract_coverage_required: true
+- contract_coverage_fields: ${CONTRACT_COVERAGE_FIELDS.join(", ")}
+- contract_coverage_decision_ids: ${contractCoverageDecisionIds(context).join(", ")}
+- contract_coverage_completion_ids: ${taskCompletionConditions(context).map(({ id }) => id).join(", ")}
+- contract_coverage_contract: ${CONTRACT_COVERAGE_CONTRACT}
+- contract_coverage_completion_prompt: ${CONTRACT_COVERAGE_COMPLETION_PROMPT}`;
+}
+
+function contractCoverageDecisionIds(context) {
+  return [
+    `D-${context.taskId}-001`,
+    `D-${context.taskId}-002`,
+    `D-${context.taskId}-002A`,
+    `D-${context.taskId}-003`,
+    `D-${context.taskId}-004`,
+    `D-${context.taskId}-005`,
+    `D-${context.taskId}-006`,
+    `D-${context.taskId}-007`,
+    `D-${context.taskId}-008`,
+  ];
+}
+
+function contractCoverageIdsForContext(context = {}) {
+  if (!context?.taskId) return { decisionIds: [], completionIds: [] };
+  return {
+    decisionIds: contractCoverageDecisionIds(context),
+    completionIds: taskCompletionConditions(context).map(({ id }) => id),
+  };
+}
+
+function renderContractCoveragePacketSchema(source = {}) {
+  const taskId = source.taskId || "active-task";
+  return `- contract_coverage_gate: ${CONTRACT_COVERAGE_GATE_NAME}
+- contract_coverage_required: true
+- contract_coverage_fields: ${CONTRACT_COVERAGE_FIELDS.join(", ")}
+- contract_coverage_expected_decision_ids: D-${taskId}-*
+- contract_coverage_expected_completion_ids: C-${taskId}-*
+- contract_coverage_completion_prompt: ${CONTRACT_COVERAGE_COMPLETION_PROMPT}`;
+}
+
+function renderContractCoverageResultFields(packet) {
+  return `- contract_coverage: ${packet.contractCoverage || "required"}
+- decision_coverage: ${packet.decisionCoverage || "not provided"}
+- completion_coverage: ${packet.completionCoverage || "not provided"}
+- source_spec_coverage: ${packet.sourceSpecCoverage || "not provided"}`;
+}
+
+function renderRunnerPromptContractCoverageGate(packet) {
+  return `
+${CONTRACT_COVERAGE_GATE_NAME}:
+${renderContractCoveragePacketSchema(packet)}
+- A completed result must map every D-* accepted decision, route/spec contract, and C-* completion condition from ${STATE_DIR_NAME}/decisions.md and ${STATE_DIR_NAME}/task.md to implementation and verification evidence.`;
+}
+
+function renderContractCoverageReturnSections(_packet) {
+  return CONTRACT_COVERAGE_FIELDS.map((field) => `- ${field}:`).join("\n");
 }
 
 function renderSupervisionSection() {
@@ -3579,7 +3964,7 @@ function printHelp() {
 Usage:
   node bin/agentic-runner.mjs intake [--cwd <path>] [--target-cwd <path>] [--work-type <id>] [--route-class <id>] [--primary-workflow <id>] [--controlled-workflows <ids>] --task <text> --task-id <id> --epoch <epoch> --scope <scope>
   node bin/agentic-runner.mjs assign [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text>
-  node bin/agentic-runner.mjs collect [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] --status <status> [--findings <text>] [--changed-files <text>] [--verification <text>] [--blockers <text>] [--assumptions <text>] [--next <text>] [--expected-outcome <text>] [--actual-result <text>] [--reproduction-or-evidence <text>] [--failure-point <text>] [--hypothesis-branches <text>] [--source-of-truth-boundary <text>] [--plugin-contract-boundary <text>] [--generated-artifact-boundary <text>] [--before-context-effects <text>] [--after-context-effects <text>] [--cross-feature-consequences <text>] [--root-cause <text>] [--fix-summary <text>] [--verification-evidence <text>] [--skipped-checks <text>] [--unresolved-risks <text>] [--next-investigation <text>]
+  node bin/agentic-runner.mjs collect [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] --status <status> [--findings <text>] [--changed-files <text>] [--verification <text>] [--blockers <text>] [--assumptions <text>] [--next <text>] [--decision-coverage <text>] [--completion-coverage <text>] [--source-spec-coverage <text>] [--expected-outcome <text>] [--actual-result <text>] [--reproduction-or-evidence <text>] [--failure-point <text>] [--hypothesis-branches <text>] [--source-of-truth-boundary <text>] [--plugin-contract-boundary <text>] [--generated-artifact-boundary <text>] [--before-context-effects <text>] [--after-context-effects <text>] [--cross-feature-consequences <text>] [--root-cause <text>] [--fix-summary <text>] [--verification-evidence <text>] [--skipped-checks <text>] [--unresolved-risks <text>] [--next-investigation <text>]
   node bin/agentic-runner.mjs run [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text> [--runner codex-cli] [--timeout-ms <ms>]
   node bin/agentic-runner.mjs orchestrate [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text>
   node bin/agentic-runner.mjs verify-assignments [--cwd <path>] [--target-cwd <path>]
@@ -3629,6 +4014,7 @@ State:
   Runner scopes also accept only simple path-only values such as "README.md", "allowed/", "bin/agentic-runner.mjs tests/workflow-state.test.mjs", ".", "repo", and "whole repo".
   Debug or repair work must identify root cause and verify the intended outcome; log-only, fallback-only, skip-only, failure-output-only, or return-to-main-loop-only changes are not completion.
   Gate-required source-change/debug/repair/source-of-truth/plugin-contract/generated-artifact inconsistency work also carries ${METACOGNITIVE_GATE_NAME} fields and rejects completed collection without them.
+  Completed parent-integration packets also carry ${CONTRACT_COVERAGE_GATE_NAME}: every D-* accepted decision, route/spec contract, and C-* completion condition must be mapped to concrete implementation and verification evidence.
 `);
 }
 
@@ -3666,6 +4052,23 @@ function getFieldValues(section, field) {
     if (entry.field !== field) continue;
     const value = entry.value.trim();
     if (value) values.push(value);
+  }
+  return values;
+}
+
+function getAnyFieldValue(section, field) {
+  const value = getAnyFieldValues(section, field)[0];
+  return value ? value : null;
+}
+
+function getAnyFieldValues(section, field) {
+  const values = [];
+  for (const block of getStructuralFieldBlocks(section)) {
+    for (const entry of block) {
+      if (entry.field !== field) continue;
+      const value = entry.value.trim();
+      if (value) values.push(value);
+    }
   }
   return values;
 }

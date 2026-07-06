@@ -1,3 +1,3 @@
 display_name: Agentic Runner
-short_description: Generic AGENT upper control-plane for complex tool, skill, plugin, workflow routing, handoff, resume, audit, and supervised assignments.
-default_prompt: Use Agentic Runner as generic AGENT upper control-plane for complex tool/skill/plugin/workflow routing, handoff, resume, audit, or supervised assignments.
+short_description: Generic AGENT upper control-plane for complex tool, skill, plugin, workflow routing, handoff, resume, audit, supervised assignments, and Contract Coverage evidence.
+default_prompt: Use Agentic Runner as generic AGENT upper control-plane for complex tool/skill/plugin/workflow routing, handoff, resume, audit, Contract Coverage evidence for route/spec decisions and completion conditions, or supervised assignments.

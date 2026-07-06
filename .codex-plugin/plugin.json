@@ -1,7 +1,7 @@
 {
   "name": "agentic-runner",
   "version": "0.1.0",
-  "description": "Agentic Runner generic AGENT upper control-plane for mixed tool/skill/plugin workflows. Primary route: supervised orchestration. Fallback: leaf routes for single-domain tasks.",
+  "description": "Agentic Runner upper control-plane for mixed tool/skill/plugin workflows, supervised routing, handoff, audit, and Contract Coverage evidence. Fallback: leaf routes.",
   "skills": "./skills/",
   "keywords": [
     "agentic-runner",
@@ -26,6 +26,11 @@
     "agentic-structciv",
     "codex-video",
     "cross-workflow-audit",
+    "contract-coverage",
+    "decision-coverage",
+    "completion-conditions",
+    "route-contract-coverage",
+    "source-spec-coverage",
     "stateful-handoff",
     "resume-checkpoint",
     "explicit-use",
@@ -43,8 +48,8 @@
   ],
   "interface": {
     "displayName": "Agentic Runner",
-    "shortDescription": "Generic AGENT upper control-plane for mixed tool, skill, plugin, workflow routing, handoff, resume, audit, and supervised assignments.",
-    "longDescription": "Coordinates route state for explicit or supervised complex requests across declared tools, skills, plugins, and specialist workflows. Tracks handoff, resume, audit context, scoped assignments, and Write boundaries while execution owners produce outputs.",
+    "shortDescription": "Generic AGENT upper control-plane for mixed routing, handoff, resume, audit, supervised assignments, and Contract Coverage evidence.",
+    "longDescription": "Coordinates route state for explicit or supervised complex requests across declared tools, skills, plugins, and specialist workflows. Tracks handoff, resume, audit context, Contract Coverage for route/spec decisions and completion conditions, scoped assignments, and Write boundaries while owners produce outputs.",
     "developerName": "suzukimakoto",
     "category": "Productivity",
     "capabilities": [
@@ -54,8 +59,8 @@
       "Audit"
     ],
     "defaultPrompt": [
-      "Use Agentic Runner as generic AGENT upper control-plane for complex tool/skill/plugin/workflow routing.",
-      "Track handoff, resume, audit, and supervised assignments; leave single-domain work to leaf routes."
+      "Use Agentic Runner as AGENT upper control-plane for complex tool/skill/plugin/workflow routing.",
+      "Track handoff, resume, audit, Contract Coverage, and supervised assignments; leave single-domain work to leaf routes."
     ],
     "brandColor": "#2563EB"
   },
