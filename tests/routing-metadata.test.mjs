@@ -73,6 +73,9 @@ test("plugin discovery metadata is explicit-only and concise", () => {
   assert.ok(plugin.interface.shortDescription.length <= 180);
   assert.ok(plugin.interface.longDescription.length <= 320);
   assert.ok(defaultPrompt.length <= 220);
+  for (const prompt of plugin.interface.defaultPrompt) {
+    assert.ok(prompt.length <= 128, "each manifest default prompt must fit the plugin schema limit");
+  }
 });
 
 test("agent UI metadata preserves the explicit-only boundary", () => {

@@ -26,7 +26,7 @@
       "Agentic Runner source CLI"
     ],
     "defaultPrompt": [
-      "Use Agentic Runner for this explicitly named request, existing .agentic-runner state, or Agentic Runner source CLI continuation, audit, or repair."
+      "Use Agentic Runner only when named, or to continue, audit, or repair existing .agentic-runner state or source CLI."
     ],
     "brandColor": "#2563EB"
   },
