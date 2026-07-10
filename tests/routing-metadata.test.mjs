@@ -6,24 +6,32 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const DISCOVERY_TERMS = [
+const EXPLICIT_DISCOVERY_TERMS = [
   /Agentic Runner/,
-  /generic AGENT/i,
-  /control-plane/i,
-  /tool/i,
-  /skill/i,
-  /plugin/i,
-  /workflow/i,
-  /handoff/i,
-  /resume/i,
+  /explicit-only/i,
+  /\.agentic-runner/,
+  /source CLI/i,
+  /continu(?:e|ation)/i,
   /audit/i,
-  /supervised assignments/i,
+  /repair/i,
+];
+
+const EXPLICIT_KEYWORDS = [
+  "agentic-runner",
+  ".agentic-runner",
+  "agentic-runner-state",
+  "agentic-runner-source-cli",
+  "agentic-runner.mjs",
+  "continue-agentic-runner",
+  "audit-agentic-runner-state",
+  "repair-agentic-runner-state",
+  "explicit-agentic-runner",
 ];
 
 const BINDING_UI_TERMS = /\b(?:must|requires?|required|owns?|gate|self-host)\b/i;
 
-function assertDiscoveryTerms(text) {
-  for (const term of DISCOVERY_TERMS) {
+function assertExplicitDiscoveryTerms(text) {
+  for (const term of EXPLICIT_DISCOVERY_TERMS) {
     assert.match(text, term);
   }
 }
@@ -34,7 +42,7 @@ function yamlScalar(text, key) {
   return match[1].trim();
 }
 
-test("plugin UI metadata stays concise without binding operational rules", () => {
+test("plugin discovery metadata is explicit-only and concise", () => {
   const plugin = JSON.parse(readFileSync(path.join(REPO_ROOT, ".codex-plugin", "plugin.json"), "utf8"));
 
   const defaultPrompt = plugin.interface.defaultPrompt.join("\n");
@@ -50,7 +58,15 @@ test("plugin UI metadata stays concise without binding operational rules", () =>
     interface: plugin.interface,
   });
 
-  assertDiscoveryTerms(uiCopy);
+  assertExplicitDiscoveryTerms(uiCopy);
+  assert.deepEqual(plugin.keywords, EXPLICIT_KEYWORDS);
+  for (const keyword of plugin.keywords) {
+    assert.match(keyword, /agentic-runner/i);
+  }
+  for (const capability of plugin.interface.capabilities) {
+    assert.match(capability, /Agentic Runner|\.agentic-runner/i);
+  }
+  assert.doesNotMatch(uiCopy, /generic AGENT|upper control-plane for (?:mixed|complex)|supervised assignments/i);
   assert.doesNotMatch(uiCopy, BINDING_UI_TERMS);
   assert.doesNotMatch(discoveryMetadata, BINDING_UI_TERMS);
   assert.ok(plugin.description.length <= 180);
@@ -59,7 +75,7 @@ test("plugin UI metadata stays concise without binding operational rules", () =>
   assert.ok(defaultPrompt.length <= 220);
 });
 
-test("agent UI metadata preserves discovery terms without binding gate text", () => {
+test("agent UI metadata preserves the explicit-only boundary", () => {
   const text = readFileSync(path.join(REPO_ROOT, "agents", "openai.yaml"), "utf8");
   const uiCopy = [
     yamlScalar(text, "display_name"),
@@ -67,14 +83,29 @@ test("agent UI metadata preserves discovery terms without binding gate text", ()
     yamlScalar(text, "default_prompt"),
   ].join("\n");
 
-  assertDiscoveryTerms(uiCopy);
+  assertExplicitDiscoveryTerms(uiCopy);
+  assert.doesNotMatch(uiCopy, /generic AGENT|upper control-plane for (?:mixed|complex)|supervised assignments/i);
   assert.doesNotMatch(uiCopy, BINDING_UI_TERMS);
   assert.ok(yamlScalar(text, "short_description").length <= 180);
   assert.ok(yamlScalar(text, "default_prompt").length <= 260);
 });
 
-test("skill contract preserves control-plane routing and subordinate ownership boundaries", () => {
+test("skill discovery is explicit-only while selected behavior remains intact", () => {
   const text = readFileSync(path.join(REPO_ROOT, "skills", "agentic-runner", "SKILL.md"), "utf8");
+
+  const description = text.match(/^description:\s*"([^"]+)"$/m)?.[1];
+  assert.ok(description, "missing quoted frontmatter description");
+  assertExplicitDiscoveryTerms(description);
+  assert.match(description, /never trigger/i);
+
+  const triggerBoundary = text.match(/## Trigger Boundary\n([\s\S]*?)\n## Core Contract/)?.[1];
+  assert.ok(triggerBoundary, "missing Trigger Boundary section");
+  assert.match(triggerBoundary, /explicitly names `Agentic Runner` or `agentic-runner`/);
+  assert.match(triggerBoundary, /continue, audit, or repair an existing `\.agentic-runner` workflow state/);
+  assert.match(triggerBoundary, /Agentic Runner source CLI/);
+  assert.match(triggerBoundary, /presence of `\.agentic-runner` state is not enough by itself/i);
+  assert.match(triggerBoundary, /Never select this skill merely because a request involves generic orchestration, mixed or multi-output work.*delegation, subagent coordination/s);
+  assert.match(triggerBoundary, /behavior available only after explicit selection, never as pre-selection routing metadata/);
 
   assert.match(text, /## Specialist Workflow Routing/);
   assert.match(text, /Agentic Runner is the generic AGENT upper control-plane/);

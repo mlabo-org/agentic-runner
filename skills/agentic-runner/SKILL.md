@@ -1,6 +1,6 @@
 ---
 name: agentic-runner
-description: "Agentic Runner generic AGENT upper control-plane for explicit complex tool/skill/plugin/workflow routing, handoff, resume, audit, and supervised assignments; .agentic-runner state, finite delegation, Contract Coverage, source-change and self-host gates. Leaf routes handle single-domain tasks."
+description: "Agentic Runner/agentic-runner explicit-only. Select only when named, or to continue, audit, or repair existing .agentic-runner state or the Agentic Runner source CLI. Generic orchestration, mixed/multi-output work, handoff/resume, supervision, source work, delegation, and subagent coordination never trigger it."
 ---
 
 # Agentic Runner
@@ -11,9 +11,11 @@ Codex は、本書の発火前提、作業手順、ツール境界、ファイ�
 
 ## Trigger Boundary
 
-- Use this skill only when the user explicitly asks for the `agentic-runner` plugin, Agentic Runner workflow, upper control-plane routing, controlled workflow orchestration, source CLI, subagent coordination, `.agentic-runner` workflow state, task_id/epoch/scope/lifecycle assignments, finite delegation depth, subagent supervision or cancellation policy, assign/collect/run/orchestrate route state, handoff generation, workflow audit, or legacy `docs/codex` migration.
-- Do not trigger this skill for ordinary one-off edits, reviews, or explanations unless the user connects the work to Agentic Runner.
-- Do not trigger this skill merely because a task belongs to one tool, one skill, one plugin, one specialist workflow, or one ordinary domain. Trigger it when Agentic Runner is needed to decide, route, supervise, resume, hand off, or audit multiple or complex subordinate owners such as tools, skills, plugins, MCP/app surfaces, `coding-agents`, Agentic StructCiv, CodexVideo, or future declared workflows.
+- Select this skill only when the user explicitly names `Agentic Runner` or `agentic-runner`; explicitly asks to continue, audit, or repair an existing `.agentic-runner` workflow state; or explicitly targets the Agentic Runner source CLI, such as `agentic-runner.mjs` or its source CLI path or command.
+- The presence of `.agentic-runner` state is not enough by itself. The active request must target that existing state for continuation, audit, or repair.
+- Never select this skill merely because a request involves generic orchestration, mixed or multi-output work, handoff, resume, audit, supervision, source change, debugging, delegation, subagent coordination, multiple tools or skills, multiple plugins, or multiple verification streams. Those generic task shapes are not Agentic Runner discovery triggers.
+- Treat the broad control-plane capabilities described later in this contract as behavior available only after explicit selection, never as pre-selection routing metadata.
+- Do not trigger this skill for ordinary edits, reviews, explanations, source work, or delegated work unless the request satisfies one of the explicit conditions above.
 - Do not treat Agentic Runner as a peer of leaf tools, skills, plugins, or specialist workflows. Agentic Runner is the generic AGENT upper control-plane above those execution owners.
 - Do not trigger this skill merely because a repository contains `docs/codex`. Legacy `docs/codex` is a migration source, not proof that the current workflow is active.
 - Do not perform legacy migration apply, plugin cache refresh, marketplace updates, or restart/reload actions unless the active user request includes that boundary.
