@@ -482,13 +482,15 @@ test("intake generates supervision guidance in assignments and handoff", () => {
     assert.match(assignments, /missed heartbeat -> soft ping\/status request -> grace wait -> stale mark -> cancel\/replace only if still silent or invalid/);
     assert.match(assignments, /descendants inherit supervision and cancellation rules; they cannot expand scope\/depth\/permissions/);
     assertSupervisionSchema(implementer);
+    assertLifecycleStateSchema(implementer);
 
     const handoff = readState(repo, "handoff.md");
     assert.match(handoff, /^Supervision:$/m);
-    assert.match(handoff, /Parent must not cancel, interrupt, retire, or replace during the no-interrupt window/);
+    assert.match(handoff, /Parent must not perform an external cancel, interrupt, or replacement action or record state_retired during the no-interrupt window/);
     assert.match(handoff, /^- hierarchy_mode: none$/m);
     assert.match(handoff, /^- heartbeat_interval: PT15M$/m);
     assert.match(handoff, /^- cancel_reason_required: true$/m);
+    assertLifecycleStateSchema(handoff);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
     assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
   } finally {
@@ -877,14 +879,204 @@ test("runner assignment packets carry supervision guidance", () => {
     const runner = readState(repo, "runner.md");
     assert.match(runner, /type: assignment[\s\S]*supervision_contract: Subagent Supervision Contract/);
     assert.match(runner, /type: assignment[\s\S]*supervision_heartbeat: Silence before heartbeat deadline is neutral, not failure\. Heartbeat is telemetry, not completion evidence\./);
-    assert.match(runner, /type: assignment[\s\S]*supervision_no_interrupt: Parent must not cancel, interrupt, retire, or replace during the no-interrupt window\./);
+    assert.match(runner, /type: assignment[\s\S]*supervision_no_interrupt: Parent must not perform an external cancel, interrupt, or replacement action or record state_retired during the no-interrupt window\./);
     assert.match(runner, /type: assignment[\s\S]*supervision_retire_cancel_reasons: completed_retire, user_stop, safety_stop, scope_violation, stale_timeout, blocker_or_failure, stale_premise/);
     assert.match(runner, /type: assignment[\s\S]*hierarchy_mode: none/);
     assert.match(runner, /type: assignment[\s\S]*heartbeat_interval: PT15M/);
     assert.match(runner, /type: assignment[\s\S]*cancel_reason_required: true/);
+    assertLifecycleStateSchema(runner);
     assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
   } finally {
     rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("collect records workflow-state lifecycle without claiming runtime-thread closure", () => {
+  const repo = makeTempGitRepo();
+  try {
+    intake(repo, {
+      taskId: "lifecycle-collect",
+      epoch: "e1",
+      scope: "README.md",
+      task: "Summarize lifecycle documentation",
+      workType: "documentation",
+    });
+    const base = [
+      "collect",
+      "--target-cwd",
+      repo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "lifecycle-collect",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--work-type",
+      "documentation",
+      "--status",
+      "blocked",
+      "--blockers",
+      "waiting for parent integration",
+      "--next",
+      "parent chooses disposition",
+    ];
+
+    const missingReason = runCli([...base, "--lifecycle-disposition", "state_retired"]);
+    assert.notEqual(missingReason.status, 0);
+    assert.match(missingReason.stderr, /state_retired requires exactly one allowed --cancel-reason/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const invalidReason = runCli([
+      ...base,
+      "--lifecycle-disposition",
+      "state_retired",
+      "--cancel-reason",
+      "process_exited",
+    ]);
+    assert.notEqual(invalidReason.status, 0);
+    assert.match(invalidReason.stderr, /state_retired requires exactly one allowed --cancel-reason/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const duplicateReason = runCli([
+      ...base,
+      "--lifecycle-disposition",
+      "state_retired",
+      "--cancel-reason",
+      "completed_retire",
+      "--cancel-reason",
+      "blocker_or_failure",
+    ]);
+    assert.notEqual(duplicateReason.status, 0);
+    assert.match(duplicateReason.stderr, /--cancel-reason must be provided exactly once/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const duplicateDisposition = runCli([
+      ...base,
+      "--lifecycle-disposition",
+      "continuation_expected",
+      "--lifecycle-disposition",
+      "state_retired",
+      "--cancel-reason",
+      "completed_retire",
+    ]);
+    assert.notEqual(duplicateDisposition.status, 0);
+    assert.match(duplicateDisposition.stderr, /--lifecycle-disposition must be provided exactly once/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const continuationWithReason = runCli([
+      ...base,
+      "--lifecycle-disposition",
+      "continuation_expected",
+      "--cancel-reason",
+      "completed_retire",
+    ]);
+    assert.notEqual(continuationWithReason.status, 0);
+    assert.match(continuationWithReason.stderr, /continuation_expected rejects --cancel-reason/);
+    assert.equal(existsSync(path.join(repo, ".agentic-runner", "runner.md")), false);
+
+    const continued = runCli(base);
+    assert.equal(continued.status, 0, continued.stderr);
+    assert.match(continued.stdout, /ok lifecycle_disposition: continuation_expected/);
+    assert.match(continued.stdout, /ok cancel_reason: none/);
+
+    const retired = runCli([
+      ...base,
+      "--lifecycle-disposition",
+      "state_retired",
+      "--cancel-reason",
+      "blocker_or_failure",
+    ]);
+    assert.equal(retired.status, 0, retired.stderr);
+    assert.match(retired.stdout, /ok lifecycle_disposition: state_retired/);
+    assert.match(retired.stdout, /ok cancel_reason: blocker_or_failure/);
+
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /lifecycle_scope: workflow_state_only/);
+    assert.match(runner, /lifecycle_disposition: continuation_expected[\s\S]*cancel_reason: none/);
+    assert.match(runner, /lifecycle_disposition: state_retired[\s\S]*cancel_reason: blocker_or_failure/);
+    assert.match(runner, /runtime_thread_disposition: unmanaged_by_workflow_cli/);
+    assert.match(runner, /runtime_changed: false/);
+    assert.doesNotMatch(runner, /runtime_thread_closed:/);
+    assert.doesNotMatch(runner, /closes or retires the subagent/);
+    assert.equal(runCli(["verify-assignments", "--target-cwd", repo]).status, 0);
+    assert.equal(runCli(["doctor", "--target-cwd", repo]).status, 0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("only pre-contract lifecycle stays unknown while fieldless current packets and runtime close claims are rejected", () => {
+  const legacyRepo = makeTempGitRepo();
+  const invalidRepo = makeTempGitRepo();
+  try {
+    intake(legacyRepo, { taskId: "legacy-lifecycle", epoch: "e1", scope: "README.md" });
+    for (const file of ["project.md", "task.md", "audit.md"]) {
+      const filePath = path.join(legacyRepo, ".agentic-runner", file);
+      writeFileSync(filePath, stripLifecycleContractVersion(readFileSync(filePath, "utf8")), "utf8");
+    }
+    const assignmentsPath = path.join(legacyRepo, ".agentic-runner", "assignments.md");
+    writeFileSync(assignmentsPath, stripLifecycleStateLines(readFileSync(assignmentsPath, "utf8")), "utf8");
+    const legacyRunnerPath = path.join(legacyRepo, ".agentic-runner", "runner.md");
+    const legacyRunner = stripLifecycleStateLines(modernRunnerPacket("legacy-lifecycle"));
+    writeFileSync(legacyRunnerPath, legacyRunner, "utf8");
+    const legacyDoctor = runCli(["doctor", "--target-cwd", legacyRepo]);
+    assert.equal(legacyDoctor.status, 0, legacyDoctor.stderr);
+    assert.match(legacyDoctor.stdout, /legacy runner lifecycle treated as unknown_legacy/);
+    assert.equal(readFileSync(legacyRunnerPath, "utf8"), legacyRunner);
+    assert.doesNotMatch(
+      readFileSync(legacyRunnerPath, "utf8"),
+      /^- lifecycle_disposition: state_retired$|^- runtime_thread_closed:/m,
+    );
+
+    intake(legacyRepo, { taskId: "legacy-lifecycle", epoch: "e1", scope: "README.md" });
+    assert.match(readState(legacyRepo, "task.md"), /^- lifecycle_contract_version: 1$/m);
+    writeFileSync(legacyRunnerPath, stripLifecycleStateLines(modernRunnerPacket("legacy-lifecycle")), "utf8");
+    const tamperedDoctor = runCli(["doctor", "--target-cwd", legacyRepo]);
+    assert.notEqual(tamperedDoctor.status, 0);
+    assert.match(tamperedDoctor.stdout, /missing or invalid workflow-state lifecycle runner packet fields/);
+    assert.match(tamperedDoctor.stdout, /lifecycle_contract_version/);
+    assert.doesNotMatch(tamperedDoctor.stdout, /legacy runner lifecycle treated as unknown_legacy/);
+    assert.notEqual(runCli(["verify-assignments", "--target-cwd", legacyRepo]).status, 0);
+    const normalized = runCli(["normalize-debugging-integrity", "--target-cwd", legacyRepo, "--execute"]);
+    assert.equal(normalized.status, 0, normalized.stderr);
+    const normalizedRunner = readFileSync(legacyRunnerPath, "utf8");
+    assertLifecycleStateSchema(normalizedRunner);
+    assert.doesNotMatch(normalizedRunner, /^- lifecycle_disposition: state_retired$/m);
+    assert.equal(runCli(["verify-assignments", "--target-cwd", legacyRepo]).status, 0);
+
+    intake(invalidRepo, { taskId: "runtime-close-claim", epoch: "e1", scope: "README.md" });
+    const assigned = runCli([
+      "assign",
+      "--target-cwd",
+      invalidRepo,
+      "--role",
+      "Implementer",
+      "--task-id",
+      "runtime-close-claim",
+      "--epoch",
+      "e1",
+      "--scope",
+      "README.md",
+      "--assignment",
+      "record a state-only lifecycle packet",
+      "--expected-output",
+      "assignment packet",
+    ]);
+    assert.equal(assigned.status, 0, assigned.stderr);
+    const invalidRunnerPath = path.join(invalidRepo, ".agentic-runner", "runner.md");
+    const invalidRunner = readFileSync(invalidRunnerPath, "utf8").replace(
+      "- runtime_changed: false",
+      "- runtime_changed: false\n- runtime_thread_closed: true",
+    );
+    writeFileSync(invalidRunnerPath, invalidRunner, "utf8");
+    const invalidDoctor = runCli(["doctor", "--target-cwd", invalidRepo]);
+    assert.notEqual(invalidDoctor.status, 0);
+    assert.match(invalidDoctor.stdout, /runtime_thread_closed=true/);
+  } finally {
+    rmSync(legacyRepo, { recursive: true, force: true });
+    rmSync(invalidRepo, { recursive: true, force: true });
   }
 });
 
@@ -1053,6 +1245,12 @@ test("pre-gate runner packets without work_type remain readable", () => {
   const repo = makeTempGitRepo();
   try {
     intake(repo, { taskId: "work-type-legacy", epoch: "e1", scope: "README.md" });
+    for (const file of ["project.md", "task.md", "audit.md"]) {
+      const filePath = path.join(repo, ".agentic-runner", file);
+      writeFileSync(filePath, stripLifecycleContractVersion(readFileSync(filePath, "utf8")), "utf8");
+    }
+    const assignmentsPath = path.join(repo, ".agentic-runner", "assignments.md");
+    writeFileSync(assignmentsPath, stripLifecycleStateLines(readFileSync(assignmentsPath, "utf8")), "utf8");
     const legacy = legacyRunnerWithoutWorkType("work-type-legacy");
     assert.doesNotMatch(legacy, /work_type:/);
     assert.doesNotMatch(legacy, /hierarchy_mode|heartbeat_interval|cancel_reason_required/);
@@ -1565,7 +1763,11 @@ test("codex-cli runner accepts explicit scope:v1 paths grammar", () => {
 
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /ok runner: codex-cli/);
-    assert.match(readState(repo, "runner.md"), /type: process-runner-result/);
+    const runner = readState(repo, "runner.md");
+    assert.match(runner, /type: process-runner-result/);
+    assert.match(runner, /Process completion is execution evidence only/);
+    assert.match(runner, /interrupt_agent and process exit are not runtime-thread close evidence/);
+    assertLifecycleStateSchema(runner);
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(fakeBin, { recursive: true, force: true });
@@ -2141,6 +2343,7 @@ ${testPacketRouteFieldLines()}
 - nested_agentic_runner_preflight: parent already selected Agentic Runner
 - debugging_integrity: debug work requires root cause and verification
 ${supervisionFieldLines()}
+${lifecycleStateFieldLines()}
 - lifecycle: return concise parent-integration material, then stop
 `;
 }
@@ -2164,7 +2367,7 @@ function modernPacketFollowedByLegacyRunnerPacket(taskId) {
 function supervisionFieldLines() {
   return `- supervision_contract: Subagent Supervision Contract
 - supervision_heartbeat: Silence before heartbeat deadline is neutral, not failure. Heartbeat is telemetry, not completion evidence.
-- supervision_no_interrupt: Parent must not cancel, interrupt, retire, or replace during the no-interrupt window.
+- supervision_no_interrupt: Parent must not perform an external cancel, interrupt, or replacement action or record state_retired during the no-interrupt window.
 - supervision_retire_cancel_reasons: completed_retire, user_stop, safety_stop, scope_violation, stale_timeout, blocker_or_failure, stale_premise
 - supervision_stale_timeout_path: missed heartbeat -> soft ping/status request -> grace wait -> stale mark -> cancel/replace only if still silent or invalid
 - supervision_descendants: For permitted nested depth, descendants inherit supervision and cancellation rules; they cannot expand scope/depth/permissions.
@@ -2179,6 +2382,15 @@ function supervisionFieldLines() {
 - hard_timeout: PT120M
 - no_interrupt_until: PT30M
 - cancel_reason_required: true`;
+}
+
+function lifecycleStateFieldLines() {
+  return `- lifecycle_contract_version: 1
+- lifecycle_scope: workflow_state_only
+- lifecycle_disposition: continuation_expected
+- cancel_reason: none
+- runtime_thread_disposition: unmanaged_by_workflow_cli
+- runtime_changed: false`;
 }
 
 function testPacketRouteFieldLines() {
@@ -2221,6 +2433,20 @@ function stripTimingLines(text) {
     .join("\n");
 }
 
+function stripLifecycleContractVersion(text) {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^- lifecycle_contract_version:/.test(line))
+    .join("\n");
+}
+
+function stripLifecycleStateLines(text) {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^- (?:lifecycle_contract_version|lifecycle_scope|lifecycle_disposition|cancel_reason|runtime_thread_disposition|runtime_changed):/.test(line))
+    .join("\n");
+}
+
 
 function removedModeStatePattern() {
   const p = "pro" + "file";
@@ -2242,6 +2468,16 @@ function assertSupervisionSchema(text) {
   assert.match(text, /^- hard_timeout: PT120M$/m);
   assert.match(text, /^- no_interrupt_until: PT30M$/m);
   assert.match(text, /^- cancel_reason_required: true$/m);
+}
+
+function assertLifecycleStateSchema(text, disposition = "continuation_expected", cancelReason = "none") {
+  assert.match(text, /^- lifecycle_contract_version: 1$/m);
+  assert.match(text, /^- lifecycle_scope: workflow_state_only$/m);
+  assert.match(text, new RegExp(`^- lifecycle_disposition: ${disposition}$`, "m"));
+  assert.match(text, new RegExp(`^- cancel_reason: ${cancelReason}$`, "m"));
+  assert.match(text, /^- runtime_thread_disposition: unmanaged_by_workflow_cli$/m);
+  assert.match(text, /^- runtime_changed: false$/m);
+  assert.doesNotMatch(text, /^- runtime_thread_closed:/m);
 }
 
 function getRoleSection(text, role) {

@@ -18,9 +18,26 @@ const LEGACY_DOCS_SEGMENTS = ["docs", "codex"];
 const RUNNER_FILE = "runner.md";
 const DEFAULT_RUNNER_TIMEOUT_MS = 120000;
 const SUBAGENT_LIFECYCLE =
-  "Parent closes or retires this subagent promptly after result integration, timeout/failure/blocker handling, stale premise/scope change, or final report when no further use is expected.";
+  "Parent records workflow-state lifecycle disposition after integration or follow-up decisions; this CLI does not close runtime threads.";
 const CHILD_RETURN_LIFECYCLE =
   "Return concise parent-integration material and stop; do not stay open waiting for more work.";
+const LIFECYCLE_CONTRACT_VERSION = "1";
+const LIFECYCLE_SCOPE = "workflow_state_only";
+const LIFECYCLE_DISPOSITIONS = ["state_retired", "continuation_expected"];
+const DEFAULT_LIFECYCLE_DISPOSITION = "continuation_expected";
+const LEGACY_LIFECYCLE_DISPOSITION = "unknown_legacy";
+const RUNTIME_THREAD_DISPOSITION = "unmanaged_by_workflow_cli";
+const RUNTIME_CHANGED = "false";
+const LIFECYCLE_FIELD_NAMES = [
+  "lifecycle_contract_version",
+  "lifecycle_scope",
+  "lifecycle_disposition",
+  "cancel_reason",
+  "runtime_thread_disposition",
+  "runtime_changed",
+];
+const LIFECYCLE_RUNTIME_BOUNDARY =
+  "Agentic Runner records workflow state only; interrupt_agent and process exit are not runtime-thread close evidence.";
 const DEBUG_INTEGRITY =
   "For debug or repair work, identify root cause and make the intended outcome succeed; log-only, fallback-only, skip-only, failure-output-only, or return-to-main-loop-only changes are not completion.";
 const METACOGNITIVE_GATE_NAME = "Meta-Cognitive Debug/Repair Gate";
@@ -49,7 +66,7 @@ const SUPERVISION_CONTRACT_NAME = "Subagent Supervision Contract";
 const SUPERVISION_HEARTBEAT =
   "Silence before heartbeat deadline is neutral, not failure. Heartbeat is telemetry, not completion evidence.";
 const SUPERVISION_NO_INTERRUPT =
-  "Parent must not cancel, interrupt, retire, or replace during the no-interrupt window.";
+  "Parent must not perform an external cancel, interrupt, or replacement action or record state_retired during the no-interrupt window.";
 const SUPERVISION_RETIRE_CANCEL_REASONS = [
   "completed_retire",
   "user_stop",
@@ -103,6 +120,7 @@ const KNOWN_FLAG_KEYS = new Set([
   "assumptions",
   "before-context-effects",
   "blockers",
+  "cancel-reason",
   "changed-files",
   "completion-coverage",
   "contract-coverage",
@@ -124,6 +142,7 @@ const KNOWN_FLAG_KEYS = new Set([
   "heartbeat-interval",
   "hierarchy-mode",
   "hypothesis-branches",
+  "lifecycle-disposition",
   "max-depth",
   "max-silence",
   "next",
@@ -400,7 +419,11 @@ function parseArgs(argv) {
       if (!value || value.startsWith("--")) {
         throw new CliError(`missing value for --${key}`);
       }
-      parsed[toCamel(key)] = value;
+      const parsedKey = toCamel(key);
+      if (["cancel-reason", "lifecycle-disposition"].includes(key) && parsed[parsedKey] !== undefined) {
+        throw new CliError(`--${key} must be provided exactly once`, 1);
+      }
+      parsed[parsedKey] = value;
       i += 1;
       continue;
     }
@@ -495,6 +518,8 @@ function collect(args) {
   appendRunnerEntry(commandContext, "Parent Integration Packets", renderIntegrationPacket(packet));
   console.log(`ok parent-integration: ${packet.role}`);
   console.log(`ok status: ${packet.status}`);
+  console.log(`ok lifecycle_disposition: ${packet.lifecycleFields.lifecycle_disposition}`);
+  console.log(`ok cancel_reason: ${packet.lifecycleFields.cancel_reason}`);
   console.log(`ok task_id: ${packet.taskId}`);
   console.log(`ok work_type: ${workTypeId(packet)}`);
 }
@@ -701,6 +726,8 @@ ${renderRunnerPromptMetacognitiveGate(packet)}
 ${renderSupervisionPromptSection(packet)}
 
 Lifecycle:
+- ${LIFECYCLE_RUNTIME_BOUNDARY}
+${renderLifecycleStateFields(packet)}
 - ${CHILD_RETURN_LIFECYCLE}
 - ${SUBAGENT_LIFECYCLE}
 
@@ -1066,7 +1093,7 @@ Operational log:
 
 - \`runner.md\`: optional; created by \`assign\`, \`collect\`, or \`run\` only.
 - Route map: Agentic Runner owns routing, handoff, state, supervision, and final audit; declared tool, skill, plugin, and specialist workflow owners own their production artifacts and verification evidence.
-- Subagents are active only for scoped work and must be closed or retired promptly when their result is integrated, blocked, failed, timed out, stale, or no longer needed.
+- Subagent assignment lifecycle is recorded in workflow state only; runtime thread state is unmanaged by this CLI.
 - ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - ${SUPERVISION_HEARTBEAT}
 - ${SUPERVISION_NO_INTERRUPT}
@@ -1093,6 +1120,7 @@ function renderProject(context) {
 - epoch: ${context.epoch}
 - scope: ${context.scope}
 - work_type: ${workTypeId(context)}
+- lifecycle_contract_version: ${LIFECYCLE_CONTRACT_VERSION}
 ${renderRouteDecisionFields(context)}
 `;
 }
@@ -1102,7 +1130,7 @@ function taskCompletionConditions(context) {
   return [
     { id: `${prefix}-001`, text: `Eight planning files exist in \`${STATE_DIR_NAME}\`.` },
     { id: `${prefix}-002`, text: "Fixed 14-role assignment scaffold sections include `role`, `status`, `task_id`, `epoch`, `scope`, `assignment`, `expected_output`, and `lifecycle`." },
-    { id: `${prefix}-003`, text: "Each generated assignment carries lifecycle guidance requiring concise integration material and prompt close/retire handling." },
+    { id: `${prefix}-003`, text: "Each generated assignment carries workflow-state-only lifecycle fields and does not claim runtime-thread closure." },
     { id: `${prefix}-004`, text: "Each generated child-worker prompt, assignment, handoff, and runner packet carries the nested Agentic Runner preflight suppression rule." },
     { id: `${prefix}-005`, text: `Each generated child-worker prompt, assignment, handoff, and modern runner packet carries the ${SUPERVISION_CONTRACT_NAME}.` },
     { id: `${prefix}-006`, text: "Route and specialist ownership are recorded before production work begins; Agentic Runner must not degrade into a generic code generator for specialist-owned article, video, or source tasks." },
@@ -1121,6 +1149,7 @@ function renderTask(context) {
 - epoch: ${context.epoch}
 - scope: ${context.scope}
 - work_type: ${workTypeId(context)}
+- lifecycle_contract_version: ${LIFECYCLE_CONTRACT_VERSION}
 ${renderRouteDecisionFields(context)}
 - task:
 
@@ -1190,11 +1219,11 @@ function renderDecisions(context) {
 - impact: Agentic Runner owns the route map, stateful handoff, supervision, and cross-workflow audit; selected specialist workflows own production artifacts and verification evidence.
 - contract_coverage_required: evidence must map specialist owner, artifact owner, verification owner, handoff artifact, and cross-workflow completion to concrete returned evidence.
 
-## D-${context.taskId}-003 Subagent Lifecycle Closure
+## D-${context.taskId}-003 Workflow-State Lifecycle Disposition
 
-- accepted: subagents return concise parent-integration material and do not remain open waiting for more work.
-- impact: parent closes or retires no-longer-needed subagents after integration, timeout/failure/blocker handling, stale premise/scope change, and before final report.
-- contract_coverage_required: evidence must name collected worker results and close/retire status, or state that no workers were spawned.
+- accepted: subagents return concise parent-integration material; Agentic Runner records \`state_retired\` or \`continuation_expected\` in workflow state only.
+- impact: \`state_retired\` requires exactly one allowed cancel reason. Runtime thread disposition remains \`${RUNTIME_THREAD_DISPOSITION}\` and \`runtime_changed\` remains false.
+- contract_coverage_required: evidence must name collected worker results, workflow-state lifecycle disposition, cancel reason when retired, and the unchanged runtime boundary, or state that no workers were spawned.
 
 ## D-${context.taskId}-004 Debugging Integrity
 
@@ -1227,7 +1256,7 @@ function renderDecisions(context) {
 
 - accepted: silence before heartbeat deadline is neutral, and heartbeat is telemetry rather than completion evidence.
 - retire_cancel_reasons: ${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}
-- impact: parent does not cancel, interrupt, retire, or replace a quiet worker during the no-interrupt window; stale timeout requires missed heartbeat, soft ping/status request, grace wait, stale mark, and only then cancel/replace if still silent or invalid.
+- impact: parent does not record \`state_retired\` or perform an external cancel, interrupt, or replacement action for a quiet worker during the no-interrupt window; stale timeout requires missed heartbeat, soft ping/status request, grace wait, stale mark, and only then a state transition or separately exposed runtime action if still silent or invalid.
 - contract_coverage_required: evidence must show supervision fields exist in generated assignment, handoff, and runner material, or name the skipped surface.
 `;
 }
@@ -1246,6 +1275,7 @@ function renderAudit(context) {
 - epoch: ${context.epoch}
 - scope: ${context.scope}
 - work_type: ${workTypeId(context)}
+- lifecycle_contract_version: ${LIFECYCLE_CONTRACT_VERSION}
 ${renderRouteDecisionFields(context)}
 - self_host_target: ${context.selfHostTarget}
 - self_host_gate: ${context.selfHostGate}
@@ -1259,7 +1289,7 @@ ${renderRouteDecisionFields(context)}
 - Run implementation checks for the active task.
 - Audit that specialist-owned artifacts and verification were accepted by the declared owner before Agentic Runner closes the cross-workflow route.
 - Record skipped checks with reasons.
-- Record any retire/cancel action with one explicit reason from ${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}.
+- Record any \`state_retired\` workflow transition with one explicit reason from ${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}; do not claim runtime-thread closure.
 - For debug or repair work, record root cause, fix, and verification that the intended outcome now succeeds.
 - If metacognitive_gate_required is true, record ${METACOGNITIVE_GATE_FIELDS.join(", ")}.
 - Record ${CONTRACT_COVERAGE_GATE_NAME}: ${CONTRACT_COVERAGE_FIELDS.join(", ")}. Completed work is not accepted until every D-* decision, route/spec contract, and C-* completion condition has concrete implementation and verification evidence.
@@ -1332,6 +1362,7 @@ ${renderRoleRouteFields(context)}
 ${renderSupervisionFields()}
 ${renderContractCoveragePacketSchema(context)}
 ${renderMetacognitiveGatePacketSchema(context.metacognitiveGate)}
+${renderLifecycleStateFields()}
 - lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
 }).join("\n\n")}
 `;
@@ -1377,7 +1408,9 @@ ${renderContractCoverageGateState(context)}
 
 Subagent lifecycle:
 - Child workers return concise parent-integration material and stop instead of waiting for more work.
-- The parent closes or retires subagents after completed result integration, timeout/failure/blocker handling, stale premise/scope change, and before final report when no further use is expected.
+- The parent records \`state_retired\` with exactly one allowed cancel reason when no further workflow-state continuation is expected; otherwise it records \`continuation_expected\`.
+- ${LIFECYCLE_RUNTIME_BOUNDARY}
+${renderLifecycleStateFields()}
 - If more work is needed after a stale premise, scope change, or failed verification, issue a fresh scoped assignment with current \`task_id\`, \`epoch\`, and \`scope\`.
 `;
 }
@@ -1390,6 +1423,8 @@ function normalizeReadmeDebugIntegrity(text, context = {}) {
   return mapGeneratedWorkflowBlock(text, (generated) => {
     const block = `- ${DEBUG_INTEGRITY}`;
     const lifecycleLine =
+      "- Subagent assignment lifecycle is recorded in workflow state only; runtime thread state is unmanaged by this CLI.";
+    const legacyLifecycleLine =
       "- Subagents are active only for scoped work and must be closed or retired promptly when their result is integrated, blocked, failed, timed out, stale, or no longer needed.";
     let next = generated.replace(
       new RegExp(
@@ -1398,6 +1433,7 @@ function normalizeReadmeDebugIntegrity(text, context = {}) {
       ),
       `${lifecycleLine}\n${block}`,
     );
+    next = next.replace(legacyLifecycleLine, lifecycleLine);
     if (!next.includes(DEBUG_INTEGRITY)) {
       next = insertAfterLineMatching(
         next,
@@ -1416,6 +1452,8 @@ function normalizeTaskDebugIntegrity(text, context = {}) {
   return mapGeneratedWorkflowBlock(text, (generated) => {
     const block = "- Debug or repair work is not complete until root cause is identified, fixed, and verified against the intended outcome.";
     const lifecycleLine =
+      "- Each generated assignment carries workflow-state-only lifecycle fields and does not claim runtime-thread closure.";
+    const legacyLifecycleLine =
       "- Each generated assignment carries lifecycle guidance requiring concise integration material and prompt close/retire handling.";
     let next = generated.replace(
       new RegExp(
@@ -1424,6 +1462,7 @@ function normalizeTaskDebugIntegrity(text, context = {}) {
       ),
       `${lifecycleLine}\n${block}`,
     );
+    next = next.replace(legacyLifecycleLine, lifecycleLine);
     if (!next.includes("Debug or repair work is not complete until root cause is identified")) {
       next = insertAfterLineMatching(next, new RegExp(`^${escapeRegExp(lifecycleLine)}$`, "m"), block, block);
     }
@@ -1489,11 +1528,14 @@ function normalizeHandoffDebugIntegrity(text, context = {}) {
 }
 
 function normalizeRunnerDebugIntegrity(text, context = {}) {
-  let next = text;
+  let next = text.replace(
+    /^Subagents are closed or retired after integration.*$/m,
+    `Assignment lifecycle is recorded in workflow state only. Runtime thread disposition remains ${RUNTIME_THREAD_DISPOSITION}; interrupt_agent and process exit are not close evidence.`,
+  );
   if (!next.includes(DEBUG_INTEGRITY)) {
     next = insertAfterLineMatching(
       next,
-      /^Subagents are closed or retired after integration.*$/m,
+      /^Assignment lifecycle is recorded in workflow state only\..*$/m,
       DEBUG_INTEGRITY,
       DEBUG_INTEGRITY,
     );
@@ -1519,12 +1561,15 @@ function normalizeRunnerDebugIntegrity(text, context = {}) {
     const packetStart = next.indexOf(packet, cursor);
     if (packetStart === -1) continue;
     normalizedPackets += next.slice(cursor, packetStart);
-    normalizedPackets += normalizeRunnerPacketContractCoverage(
-      normalizeRunnerPacketMetacognitiveGate(
-        normalizeRunnerPacketSupervision(normalizeRunnerPacketDebugIntegrity(packet)),
-        context.workflowGate,
+    normalizedPackets += normalizeRunnerPacketLifecycle(
+      normalizeRunnerPacketContractCoverage(
+        normalizeRunnerPacketMetacognitiveGate(
+          normalizeRunnerPacketSupervision(normalizeRunnerPacketDebugIntegrity(packet)),
+          context.workflowGate,
+        ),
+        context.contractContext,
       ),
-      context.contractContext,
+      context.workflowGate,
     );
     cursor = packetStart + packet.length;
   }
@@ -1621,6 +1666,32 @@ function normalizeRunnerPacketSupervision(section) {
   if (!runnerPacketRequiresSupervision(section)) return section;
   if (validateSupervisionContractFields(section).valid) return section;
   return ensureSupervisionFieldsInSection(section);
+}
+
+function normalizeRunnerPacketLifecycle(section, workflowGate = {}) {
+  const type = getFieldValue(section, "type");
+  if (![
+    "assignment",
+    "parent-integration",
+    "process-orchestration-skeleton",
+    "orchestration-state",
+    "process-runner-result",
+  ].includes(type)) {
+    return section;
+  }
+  if (workflowGate.lifecycleContractVersion !== LIFECYCLE_CONTRACT_VERSION) return section;
+  if (!isCurrentWorkflowPacket(section, workflowGate)) return section;
+
+  const hasLifecycleStateField = LIFECYCLE_FIELD_NAMES.some((field) => Boolean(getFieldValue(section, field)));
+  if (hasLifecycleStateField || getFieldValue(section, "runtime_thread_closed")) return section;
+
+  let next = section;
+  for (const line of renderLifecycleStateFields().split("\n").filter(Boolean)) {
+    const match = /^- ([^:]+):\s*(.*)$/.exec(line);
+    if (!match) continue;
+    next = upsertFieldBeforeLifecycle(next, match[1], match[2]);
+  }
+  return next;
 }
 
 function ensureSupervisionFieldsInSection(section) {
@@ -1930,6 +2001,7 @@ function requireIntegrationPacket(args, commandContext) {
     decisionCoverage: singleLine(args.decisionCoverage || "not provided"),
     completionCoverage: singleLine(args.completionCoverage || "not provided"),
     sourceSpecCoverage: singleLine(args.sourceSpecCoverage || "not provided"),
+    lifecycleFields: resolveLifecycleFields(args),
   };
   packet.metacognitiveGate = resolvePacketMetacognitiveGate(commandContext, packet);
   packet.metacognitiveFields = readMetacognitiveArgs(args);
@@ -1942,6 +2014,7 @@ function assertValidIntakeForPacket(commandContext, packet, activity) {
   const state = resolveWorkflowState(commandContext.targetCwd);
   const missing = validateGeneratedIntakeFiles(state.stateDir);
   const identity = readWorkflowTaskIdentity(state.stateDir);
+  const workflowContext = readWorkflowMetacognitiveContext(state.stateDir);
   const mismatches = [...identity.errors];
 
   if (!identity.taskId) mismatches.push("task.md:task_id missing");
@@ -1950,6 +2023,11 @@ function assertValidIntakeForPacket(commandContext, packet, activity) {
   else if (identity.epoch !== packet.epoch) mismatches.push(`epoch ${packet.epoch} does not match current epoch ${identity.epoch}`);
   if (!identity.scope) mismatches.push("task.md:scope missing");
   else if (identity.scope !== packet.scope) mismatches.push(`scope ${packet.scope} does not match current scope ${identity.scope}`);
+  if (workflowContext.lifecycleContractVersion !== LIFECYCLE_CONTRACT_VERSION) {
+    mismatches.push(
+      `task.md:lifecycle_contract_version must be ${LIFECYCLE_CONTRACT_VERSION}; rerun intake before appending modern runner packets`,
+    );
+  }
 
   if (missing.length || mismatches.length) {
     const details = [...missing, ...mismatches].join(", ");
@@ -2179,6 +2257,7 @@ ${renderPacketRouteFields(packet)}
 - nested_agentic_runner_preflight: ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(packet)}
+${renderLifecycleStateFields(packet)}
 ${renderContractCoveragePacketSchema(packet)}
 ${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
 - lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
@@ -2205,12 +2284,13 @@ ${renderPacketRouteFields(packet)}
 - next: ${packet.next}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(packet)}
+${renderLifecycleStateFields(packet)}
 ${renderContractCoverageResultFields(packet)}
 ${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
 ${renderMetacognitiveResultFields(packet.metacognitiveGate, "not completed", packet.metacognitiveFields, {
   includeAll: isCompletionStatus(packet.status),
 })}
-- lifecycle: Parent integrates this packet, records any blocker or follow-up, then closes or retires the subagent unless an explicitly scoped continuation is required.`;
+- lifecycle: Parent integrates this packet and follows its workflow-state lifecycle disposition. ${LIFECYCLE_RUNTIME_BOUNDARY}`;
 }
 
 function renderOrchestrationSkeleton(packet) {
@@ -2233,6 +2313,7 @@ ${renderPacketRouteFields(packet)}
 - nested_agentic_runner_preflight: ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(packet)}
+${renderLifecycleStateFields(packet)}
 ${renderContractCoveragePacketSchema(packet)}
 ${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
 - lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
@@ -2262,6 +2343,7 @@ ${renderPacketRouteFields(packet)}
 - nested_agentic_runner_preflight: ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(packet)}
+${renderLifecycleStateFields(packet)}
 ${renderContractCoveragePacketSchema(packet)}
 ${renderMetacognitiveGatePacketSchema(packet.metacognitiveGate)}
 - lifecycle: ${CHILD_RETURN_LIFECYCLE} ${SUBAGENT_LIFECYCLE}`;
@@ -2291,6 +2373,7 @@ ${renderPacketRouteFields(result)}
 - failure: ${result.failure}
 - debugging_integrity: ${DEBUG_INTEGRITY}
 ${renderSupervisionFields(result)}
+${renderLifecycleStateFields(result)}
 ${renderMetacognitiveGatePacketSchema(result.metacognitiveGate)}
 ${renderMetacognitiveResultFields(result.metacognitiveGate, "missing from runner result", result.metacognitiveFields, {
   includeAll: result.status === "completed",
@@ -2307,7 +2390,7 @@ function appendRunnerEntry(commandContext, heading, entry) {
   const initial = `# Agentic Runner Operations
 
 This file records CLI-issued assignments, parent-integration packets, control-plane orchestration state, process-orchestration skeletons, and process runner results.
-Subagents are closed or retired after integration, timeout/failure/blocker handling, stale premise/scope change, or final report when no further use is expected.
+Assignment lifecycle is recorded in workflow state only. Runtime thread disposition remains ${RUNTIME_THREAD_DISPOSITION}; interrupt_agent and process exit are not close evidence.
 ${NESTED_AGENTIC_RUNNER_PREFLIGHT}
 Agentic Runner is the upper control-plane for routing, handoff, supervision, resume checkpoints, and final cross-workflow audit; specialist workflows own subordinate execution evidence.
 ${renderSupervisionFields()}
@@ -2362,6 +2445,15 @@ function validateAssignmentFiles(stateDir) {
   const routeDecisionValidation = validateRouteDecisionState(stateDir);
   results.push(...routeDecisionValidation.results);
   fatal = fatal || routeDecisionValidation.fatal;
+
+  if (workflowGate.lifecycleContractVersion === LIFECYCLE_CONTRACT_VERSION) {
+    results.push(["ok", `lifecycle contract version present in task.md (${LIFECYCLE_CONTRACT_VERSION})`]);
+  } else if (!workflowGate.lifecycleContractVersion) {
+    results.push(["warn", `workflow state predates lifecycle contract version ${LIFECYCLE_CONTRACT_VERSION}`]);
+  } else {
+    results.push(["warn", `unsupported lifecycle contract version in task.md: ${workflowGate.lifecycleContractVersion}`]);
+    fatal = true;
+  }
 
   if (existsSync(assignmentPath)) {
     checkedFiles += 1;
@@ -2492,6 +2584,8 @@ function validateRoleAssignments(text, workflowGate = { required: false }, optio
   const missingRoles = ROLES.filter((role) => !new RegExp(`^## ${escapeRegExp(role)}$`, "m").test(text));
   const invalidFields = [];
   const invalidSupervisionFields = [];
+  const invalidLifecycleFields = [];
+  const legacyLifecycleRoles = [];
   const invalidMetacognitiveFields = [];
   const invalidRouteFields = [];
 
@@ -2507,6 +2601,12 @@ function validateRoleAssignments(text, workflowGate = { required: false }, optio
     }
     const supervision = validateSupervisionContractFields(section);
     for (const missing of supervision.missing) invalidSupervisionFields.push(`${role}.${missing}`);
+    const lifecycle = validateLifecycleStateFields(section, {
+      contractVersion: workflowGate.lifecycleContractVersion,
+      current: true,
+    });
+    if (lifecycle.legacy) legacyLifecycleRoles.push(role);
+    else for (const missing of lifecycle.missing) invalidLifecycleFields.push(`${role}.${missing}`);
     if (options.routeRequired) {
       for (const routeError of validateRouteDecisionFields(section, role, { requireSpecialistOwner: false })) {
         invalidRouteFields.push(routeError);
@@ -2533,6 +2633,15 @@ function validateRoleAssignments(text, workflowGate = { required: false }, optio
   if (invalidSupervisionFields.length === 0) results.push(["ok", "supervision contract present in assignments"]);
   else {
     results.push(["warn", `missing or incomplete supervision assignment fields: ${invalidSupervisionFields.join(", ")}`]);
+    fatal = true;
+  }
+
+  if (invalidLifecycleFields.length === 0 && legacyLifecycleRoles.length === 0) {
+    results.push(["ok", "workflow-state lifecycle fields present in assignments"]);
+  } else if (invalidLifecycleFields.length === 0) {
+    results.push(["warn", `legacy assignment lifecycle treated as ${LEGACY_LIFECYCLE_DISPOSITION}: ${legacyLifecycleRoles.join(", ")}`]);
+  } else {
+    results.push(["warn", `missing or invalid workflow-state lifecycle assignment fields: ${invalidLifecycleFields.join(", ")}`]);
     fatal = true;
   }
 
@@ -2573,6 +2682,8 @@ function validateRunnerPackets(text, workflowGate = { required: false }, options
   const invalidPackets = [];
   const invalidRoutePackets = [];
   const invalidSupervisionPackets = [];
+  const invalidLifecyclePackets = [];
+  const legacyLifecyclePackets = [];
   const invalidMetacognitivePackets = [];
   const invalidContractCoveragePackets = [];
   let checked = 0;
@@ -2629,6 +2740,13 @@ function validateRunnerPackets(text, workflowGate = { required: false }, options
       for (const missing of supervision.missing) invalidSupervisionPackets.push(`${packetLabel(section)}.${missing}`);
     }
 
+    const lifecycle = validateLifecycleStateFields(section, {
+      contractVersion: workflowGate.lifecycleContractVersion,
+      current: isCurrentWorkflowPacket(section, workflowGate),
+    });
+    if (lifecycle.legacy) legacyLifecyclePackets.push(packetLabel(section));
+    else for (const missing of lifecycle.missing) invalidLifecyclePackets.push(`${packetLabel(section)}.${missing}`);
+
     if (options.routeRequired && !runnerPacketUsesLegacySchema(section) && isCurrentWorkflowPacket(section, workflowGate)) {
       for (const routeError of validateRouteDecisionFields(section, packetLabel(section), { requireSpecialistOwner: true })) {
         invalidRoutePackets.push(routeError);
@@ -2667,16 +2785,27 @@ function validateRunnerPackets(text, workflowGate = { required: false }, options
     invalidPackets.length === 0
     && invalidRoutePackets.length === 0
     && invalidSupervisionPackets.length === 0
+    && invalidLifecyclePackets.length === 0
     && invalidMetacognitivePackets.length === 0
     && invalidContractCoveragePackets.length === 0
   ) {
-    return { results: [["ok", `runner packets valid (${checked} checked)`]], fatal: false };
+    const results = [["ok", `runner packets valid (${checked} checked)`]];
+    if (legacyLifecyclePackets.length) {
+      results.push(["warn", `legacy runner lifecycle treated as ${LEGACY_LIFECYCLE_DISPOSITION}: ${legacyLifecyclePackets.join(", ")}`]);
+    }
+    return { results, fatal: false };
   }
   const results = [];
   if (invalidPackets.length) results.push(["warn", `missing or empty runner packet fields: ${invalidPackets.join(", ")}`]);
   if (invalidRoutePackets.length) results.push(["warn", `missing or invalid route runner packet fields: ${invalidRoutePackets.join(", ")}`]);
   if (invalidSupervisionPackets.length) {
     results.push(["warn", `missing or incomplete supervision runner packet fields: ${invalidSupervisionPackets.join(", ")}`]);
+  }
+  if (invalidLifecyclePackets.length) {
+    results.push(["warn", `missing or invalid workflow-state lifecycle runner packet fields: ${invalidLifecyclePackets.join(", ")}`]);
+  }
+  if (legacyLifecyclePackets.length) {
+    results.push(["warn", `legacy runner lifecycle treated as ${LEGACY_LIFECYCLE_DISPOSITION}: ${legacyLifecyclePackets.join(", ")}`]);
   }
   if (invalidMetacognitivePackets.length) {
     results.push(["warn", `missing or incomplete metacognitive runner packet fields: ${invalidMetacognitivePackets.join(", ")}`]);
@@ -2764,6 +2893,7 @@ function readWorkflowMetacognitiveContext(stateDir) {
   const scope = identity.scope;
   const task = getFieldValue(text, "task");
   const workType = resolveWorkType(getFieldValue(text, "work_type") || DEFAULT_WORK_TYPE);
+  const lifecycleContractVersion = getFieldValue(text, "lifecycle_contract_version") || null;
   const gateSection = getMetacognitiveGateFieldSection(text);
   const declaredRequired = getFieldValue(gateSection, "metacognitive_gate_required") === "true";
   const declaredTriggers = splitList(getFieldValue(gateSection, "metacognitive_gate_triggers")).filter((item) => item !== "none");
@@ -2779,6 +2909,7 @@ function readWorkflowMetacognitiveContext(stateDir) {
     scope,
     task,
     workType,
+    lifecycleContractVersion,
     identityErrors: identity.errors,
   };
 }
@@ -3011,6 +3142,52 @@ function validateContractCoverageGateText(text) {
   return { valid: missing.length === 0, missing };
 }
 
+function validateLifecycleStateFields(section, options = {}) {
+  const missing = [];
+  const hasLifecycleStateField = LIFECYCLE_FIELD_NAMES.some((field) => Boolean(getFieldValue(section, field)));
+  const runtimeThreadClosed = getFieldValue(section, "runtime_thread_closed");
+
+  if (!hasLifecycleStateField && !runtimeThreadClosed) {
+    if (options.current && options.contractVersion === LIFECYCLE_CONTRACT_VERSION) {
+      return {
+        valid: false,
+        legacy: false,
+        disposition: null,
+        missing: [...LIFECYCLE_FIELD_NAMES],
+      };
+    }
+    return { valid: true, legacy: true, disposition: LEGACY_LIFECYCLE_DISPOSITION, missing };
+  }
+
+  if (getFieldValue(section, "lifecycle_contract_version") !== LIFECYCLE_CONTRACT_VERSION) {
+    missing.push("lifecycle_contract_version");
+  }
+  if (getFieldValue(section, "lifecycle_scope") !== LIFECYCLE_SCOPE) missing.push("lifecycle_scope");
+
+  const disposition = getFieldValue(section, "lifecycle_disposition");
+  if (!LIFECYCLE_DISPOSITIONS.includes(disposition)) missing.push("lifecycle_disposition");
+
+  const cancelReason = getFieldValue(section, "cancel_reason");
+  if (disposition === "state_retired") {
+    if (!SUPERVISION_RETIRE_CANCEL_REASONS.includes(cancelReason)) missing.push("cancel_reason");
+  } else if (disposition === "continuation_expected") {
+    if (cancelReason !== "none") missing.push("cancel_reason");
+  }
+
+  if (getFieldValue(section, "runtime_thread_disposition") !== RUNTIME_THREAD_DISPOSITION) {
+    missing.push("runtime_thread_disposition");
+  }
+  if (getFieldValue(section, "runtime_changed") !== RUNTIME_CHANGED) missing.push("runtime_changed");
+  if (String(runtimeThreadClosed || "").toLowerCase() === "true") missing.push("runtime_thread_closed=true");
+
+  return {
+    valid: missing.length === 0,
+    legacy: false,
+    disposition,
+    missing,
+  };
+}
+
 function validateSupervisionContractFields(section) {
   const missing = [];
   const contract = getFieldValue(section, "supervision_contract");
@@ -3028,7 +3205,10 @@ function validateSupervisionContractFields(section) {
   const noInterrupt = getFieldValue(section, "supervision_no_interrupt");
   if (
     !noInterrupt
-    || !/must not cancel, interrupt, retire, or replace/i.test(noInterrupt)
+    || !(
+      /must not perform an external cancel, interrupt, or replacement action or record state_retired/i.test(noInterrupt)
+      || /must not cancel, interrupt, retire, or replace/i.test(noInterrupt)
+    )
     || !/no-interrupt window/i.test(noInterrupt)
   ) {
     missing.push("supervision_no_interrupt");
@@ -3409,6 +3589,10 @@ function renderSupervisionPromptSection(source = {}) {
 ${renderSupervisionFields(source)}`;
 }
 
+function renderLifecycleStateFields(source = {}) {
+  return renderFieldLines(source?.lifecycleFields || defaultLifecycleFields());
+}
+
 function renderFieldLines(fields) {
   return Object.entries(fields)
     .map(([field, value]) => `- ${field}: ${value}`)
@@ -3482,9 +3666,9 @@ function packetLabel(section) {
 
 function renderRunnerLifecycle(result) {
   if (result.status === "completed") {
-    return "Parent integrates the completed result, then closes or retires the subagent unless an explicitly scoped continuation is required.";
+    return `Process completion is execution evidence only; assignment lifecycle remains ${DEFAULT_LIFECYCLE_DISPOSITION} until an explicit collect transition. ${LIFECYCLE_RUNTIME_BOUNDARY}`;
   }
-  return "Parent records the failure, timeout, or blocker, retires this subagent context, and issues a fresh scoped assignment only if more work is still required.";
+  return `Parent records the failure, timeout, or blocker, then uses collect to record state_retired or continuation_expected. ${LIFECYCLE_RUNTIME_BOUNDARY}`;
 }
 
 function upsertGenerated(filePath, body) {
@@ -3878,6 +4062,44 @@ function resolveSupervisionTimingFields(args = {}) {
   return fields;
 }
 
+function defaultLifecycleFields() {
+  return {
+    lifecycle_contract_version: LIFECYCLE_CONTRACT_VERSION,
+    lifecycle_scope: LIFECYCLE_SCOPE,
+    lifecycle_disposition: DEFAULT_LIFECYCLE_DISPOSITION,
+    cancel_reason: "none",
+    runtime_thread_disposition: RUNTIME_THREAD_DISPOSITION,
+    runtime_changed: RUNTIME_CHANGED,
+  };
+}
+
+function resolveLifecycleFields(args = {}) {
+  const fields = defaultLifecycleFields();
+  const disposition = singleLine(args.lifecycleDisposition || DEFAULT_LIFECYCLE_DISPOSITION);
+  if (!LIFECYCLE_DISPOSITIONS.includes(disposition)) {
+    throw new CliError(
+      `invalid --lifecycle-disposition: ${disposition}; expected ${LIFECYCLE_DISPOSITIONS.join(" or ")}`,
+      1,
+    );
+  }
+
+  const cancelReason = args.cancelReason === undefined ? "" : singleLine(args.cancelReason);
+  if (disposition === "state_retired") {
+    if (!SUPERVISION_RETIRE_CANCEL_REASONS.includes(cancelReason)) {
+      throw new CliError(
+        `--lifecycle-disposition state_retired requires exactly one allowed --cancel-reason: ${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}`,
+        1,
+      );
+    }
+  } else if (args.cancelReason !== undefined) {
+    throw new CliError("--lifecycle-disposition continuation_expected rejects --cancel-reason", 1);
+  }
+
+  fields.lifecycle_disposition = disposition;
+  fields.cancel_reason = cancelReason || "none";
+  return fields;
+}
+
 function isKnownWorkTypeId(id) {
   return Object.prototype.hasOwnProperty.call(WORK_TYPE_GUIDANCE, id);
 }
@@ -3964,7 +4186,7 @@ function printHelp() {
 Usage:
   node bin/agentic-runner.mjs intake [--cwd <path>] [--target-cwd <path>] [--work-type <id>] [--route-class <id>] [--primary-workflow <id>] [--controlled-workflows <ids>] --task <text> --task-id <id> --epoch <epoch> --scope <scope>
   node bin/agentic-runner.mjs assign [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text>
-  node bin/agentic-runner.mjs collect [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] --status <status> [--findings <text>] [--changed-files <text>] [--verification <text>] [--blockers <text>] [--assumptions <text>] [--next <text>] [--decision-coverage <text>] [--completion-coverage <text>] [--source-spec-coverage <text>] [--expected-outcome <text>] [--actual-result <text>] [--reproduction-or-evidence <text>] [--failure-point <text>] [--hypothesis-branches <text>] [--source-of-truth-boundary <text>] [--plugin-contract-boundary <text>] [--generated-artifact-boundary <text>] [--before-context-effects <text>] [--after-context-effects <text>] [--cross-feature-consequences <text>] [--root-cause <text>] [--fix-summary <text>] [--verification-evidence <text>] [--skipped-checks <text>] [--unresolved-risks <text>] [--next-investigation <text>]
+  node bin/agentic-runner.mjs collect [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] --status <status> [--lifecycle-disposition state_retired|continuation_expected] [--cancel-reason <allowed-reason>] [--findings <text>] [--changed-files <text>] [--verification <text>] [--blockers <text>] [--assumptions <text>] [--next <text>] [--decision-coverage <text>] [--completion-coverage <text>] [--source-spec-coverage <text>] [--expected-outcome <text>] [--actual-result <text>] [--reproduction-or-evidence <text>] [--failure-point <text>] [--hypothesis-branches <text>] [--source-of-truth-boundary <text>] [--plugin-contract-boundary <text>] [--generated-artifact-boundary <text>] [--before-context-effects <text>] [--after-context-effects <text>] [--cross-feature-consequences <text>] [--root-cause <text>] [--fix-summary <text>] [--verification-evidence <text>] [--skipped-checks <text>] [--unresolved-risks <text>] [--next-investigation <text>]
   node bin/agentic-runner.mjs run [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text> [--runner codex-cli] [--timeout-ms <ms>]
   node bin/agentic-runner.mjs orchestrate [--cwd <path>] [--target-cwd <path>] --role <role> --task-id <id> --epoch <epoch> --scope <scope> [--work-type <id>] [--specialist-owner <id>] [--hierarchy-mode none|one_level|n_level] [--max-depth <n>] [--depth <n>] [--remaining-depth <n>] [--heartbeat-interval <ISO-8601 duration>] [--heartbeat-deadline <ISO-8601 duration>] [--max-silence <ISO-8601 duration>] [--soft-timeout <ISO-8601 duration>] [--hard-timeout <ISO-8601 duration>] [--no-interrupt-until <ISO-8601 duration>] --assignment <text> --expected-output <text>
   node bin/agentic-runner.mjs verify-assignments [--cwd <path>] [--target-cwd <path>]
@@ -3976,12 +4198,12 @@ Usage:
 Commands:
   intake   Create or update target .agentic-runner workflow files.
   assign   Record a scoped specialist assignment in .agentic-runner/runner.md.
-  collect  Record a parent-integration packet returned by a specialist.
+  collect  Record a parent-integration packet and its workflow-state lifecycle disposition. state_retired requires exactly one allowed --cancel-reason; continuation_expected rejects --cancel-reason.
   run      Record an assignment and orchestration skeleton by default; with --runner codex-cli, spawn codex exec and record normalized results.
   orchestrate
            Record control-plane route/orchestration state only. It never accepts --runner.
   verify-assignments
-           Block missing or empty task_id, epoch, scope, lifecycle, supervision, or debugging_integrity fields in assignments and modern runner packets.
+           Block missing or invalid task_id, epoch, scope, workflow-state lifecycle, supervision, or debugging_integrity fields in assignments and modern runner packets. Legacy lifecycle fields remain unknown_legacy.
   normalize-debugging-integrity
            Dry-run by default. With --execute, add debugging integrity and metacognitive gate schema to existing .agentic-runner files and supersede pre-gate completion claims that lack required result fields.
   handoff  Print target .agentic-runner/handoff.md.
@@ -3996,7 +4218,7 @@ State:
   Existing docs/codex directories are migration input or hints only; they are never operational state fallback or write targets.
   State writes add .agentic-runner/ to .git/info/exclude; .gitignore is not edited.
   Self-host gate: Agentic Runner source edits are external-supervised by default. When the target git root is the Agentic Runner source repository, state-writing commands require explicit --target-cwd and report self_host_gate in generated project/audit state. This does not authorize commits, cache refresh, activation, destructive actions, or scope expansion.
-  Generated assignments, handoff prompts, and runner packets carry lifecycle closure, supervision, route control-plane boundaries, and debugging integrity rules.
+  Generated assignments, handoff prompts, and runner packets carry workflow-state-only lifecycle, supervision, route control-plane boundaries, and debugging integrity rules.
   Agentic Runner is the generic AGENT upper control-plane. It owns route classification, controlled workflow selection, handoff, supervision, resume checkpoints, and final cross-workflow audit. It does not replace declared tool, skill, plugin, or specialist execution workflows.
   Route classes are ${knownRouteClassIds().join(", ")}. Built-in controlled workflow ids include ${knownSpecialistWorkflowIds().join(", ")}; additional safe ids can be declared with --controlled-workflows.
   coding-agents, Agentic StructCiv, and CodexVideo are built-in subordinate execution workflow examples controlled through route packets; they are not the boundary of Agentic Runner's control-plane.
@@ -4004,6 +4226,7 @@ State:
   Mixed routes require --specialist-owner on assign, collect, run, and orchestrate packets so the subordinate execution owner is explicit.
   Parent-managed child-worker prompts also suppress nested Agentic Runner preflight; child workers do not ask \`agentic-runner を使いますか？ [Y/n]\` or start independent nested Agentic Runner workflows inside an assigned task_id/epoch/scope. Descendant delegation is allowed only when finite hierarchy fields grant remaining_depth > 0 and inherited supervision is preserved.
   Supervision treats silence before heartbeat deadline as neutral, forbids cancel/interrupt/retire/replace during the no-interrupt window, treats heartbeat as telemetry rather than completion evidence, requires explicit retire/cancel reasons (${SUPERVISION_RETIRE_CANCEL_REASONS.join(", ")}), and uses missed heartbeat -> soft ping/status request -> grace wait -> stale mark before cancel/replace.
+  Lifecycle contract version is ${LIFECYCLE_CONTRACT_VERSION}. Current task state and modern packets record lifecycle_disposition, cancel_reason, runtime_thread_disposition=${RUNTIME_THREAD_DISPOSITION}, and runtime_changed=false. Fieldless current packets under versioned task state are invalid; only verifiably pre-contract state or non-current history remains ${LEGACY_LIFECYCLE_DISPOSITION}. This CLI never closes runtime threads; interrupt_agent and process exit are not close evidence.
   Optional --work-type is semantic command metadata. Known ids: ${knownWorkTypeIds().join(", ")}.
   --work-type auto preserves keyword/path inference. --work-type source-change and --work-type debug force the metacognitive gate for that command.
   --work-type documentation suppresses keyword/path gate inference for that command only; it does not replace debug/root-cause gates and cannot downgrade existing gate-required workflow state.

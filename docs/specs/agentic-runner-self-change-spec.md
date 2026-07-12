@@ -69,14 +69,26 @@ Items 0-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
      packet, or process-result activity actually occurs.
    - Do not require `runner.md` for unrelated intake/spec/documentation flows.
 
-4. Subagent lifecycle closure
+4. Workflow-state lifecycle disposition
    - Subagents must return concise parent-integration material and must not stay
      open waiting for more work after returning it.
-   - The parent is responsible for promptly closing or retiring no-longer-needed
-     subagents after completed result integration, hard-timeout/failure/blocker
-     handling, stale premise or scope change, and before final report when no
-     further use is expected, without overriding the supervision and
-     cancellation rules.
+   - Current workflow state and modern packets record
+     `lifecycle_contract_version: 1`, `lifecycle_scope: workflow_state_only`,
+     `lifecycle_disposition`, `cancel_reason`,
+     `runtime_thread_disposition: unmanaged_by_workflow_cli`, and
+     `runtime_changed: false`.
+   - `state_retired` requires exactly one allowed `cancel_reason`.
+     `continuation_expected` requires `cancel_reason: none` and is the safe
+     default when `collect` omits `--lifecycle-disposition`.
+   - This workflow state does not close a runtime thread. `interrupt_agent` and
+     process exit are not runtime-thread close evidence, and generated output
+     must never claim `runtime_thread_closed: true`.
+   - A fieldless current packet under versioned task state is invalid. Existing
+     fieldless packets remain `unknown_legacy` only when workflow state
+     verifiably predates the lifecycle contract marker or the packet is
+     non-current history; migration and validation must not synthesize retirement.
+     Explicit normalization may add only `continuation_expected` lifecycle
+     fields to a fieldless current packet; it must not infer `state_retired`.
    - Generated assignments, runner prompts, runner packets, and handoff material
      must carry this lifecycle rule so future job state preserves it.
 
@@ -99,13 +111,13 @@ Items 0-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
      `soft_timeout`, `hard_timeout`, `no_interrupt_until`, and
      `cancel_reason_required: true`.
    - Silence before `heartbeat_deadline` or `no_interrupt_until` is neutral and
-     must not trigger cancellation, interruption, retirement, replacement, or
-     reassignment by itself.
+     must not trigger `state_retired`, cancellation, interruption, replacement,
+     or reassignment by itself.
    - Heartbeats and progress reports are telemetry only. They are not completion
      evidence, verification evidence, root-cause evidence, or permission to
      broaden scope.
-   - Cancellation, interruption, retirement, or replacement must record exactly
-     one allowed reason: `completed_retire`, `user_stop`, `safety_stop`,
+   - Every `state_retired` workflow transition, cancellation, interruption, or
+     replacement must record exactly one allowed reason: `completed_retire`, `user_stop`, `safety_stop`,
      `scope_violation`, `stale_timeout`, `blocker_or_failure`, or
      `stale_premise`.
    - Cancellation for quiet staleness must follow this path: missed heartbeat,
@@ -203,7 +215,7 @@ Future implementation work should preserve this split:
   when `--target-cwd` or an explicit target points elsewhere.
 - Generated job state must preserve nested Agentic Runner preflight suppression,
   finite delegation depth, subagent supervision and cancellation rules,
-  subagent lifecycle closure, concise integration-output rules, debug
+  workflow-state lifecycle disposition, runtime-thread boundary, concise integration-output rules, debug
   root-cause completion requirements, and metacognitive context-impact checks
   for gate-required work.
 - Stale generated state must be normalized explicitly before verification is
