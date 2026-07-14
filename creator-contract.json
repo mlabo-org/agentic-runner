@@ -1,0 +1,150 @@
+{
+  "schema_version": "creator-contract/v1",
+  "kind": "plugin",
+  "capability_id": "agentic-runner",
+  "official_creator": "plugin-creator",
+  "routing": {
+    "task_class": "Explicit Agentic Runner workflow-state and source CLI operation",
+    "natural_language_triggers": [
+      "Agentic Runner",
+      "existing .agentic-runner state",
+      "Agentic Runner source CLI"
+    ],
+    "primary_route": "Use the source CLI and the agentic-runner skill only after an explicit Agentic Runner request or an explicit request to continue, audit, or repair its state.",
+    "fallback_conditions": [
+      "Continue in the main thread when the official subagent workflow is unavailable or the work is tightly coupled.",
+      "Use a specialist leaf workflow directly when the request is single-domain and does not explicitly select Agentic Runner."
+    ],
+    "non_use_conditions": [
+      "Do not auto-route generic orchestration, coding, debugging, delegation, handoff, or mixed work to Agentic Runner.",
+      "Do not treat plugin cache state as the editable source of truth."
+    ],
+    "discovery": {
+      "task_terms": [
+        "Agentic Runner",
+        "source CLI"
+      ],
+      "trigger_phrases": [
+        "existing .agentic-runner state",
+        "audit Agentic Runner state"
+      ],
+      "artifact_or_tool_terms": [
+        ".agentic-runner",
+        "agentic-runner.mjs"
+      ],
+      "aliases": [
+        "agentic-runner"
+      ]
+    }
+  },
+  "inputs": [
+    {
+      "name": "Explicit workflow request",
+      "description": "A named Agentic Runner request or an explicit continuation, audit, or repair target with task, epoch, and scope."
+    },
+    {
+      "name": "Target Git worktree",
+      "description": "The resolved jobsite repository whose local .agentic-runner state is inspected or updated."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Workflow state",
+      "description": "Scoped .agentic-runner planning, assignment, lifecycle, handoff, and audit records."
+    },
+    {
+      "name": "CLI validation evidence",
+      "description": "Doctor, assignment verification, tests, and source versus cache boundary evidence."
+    }
+  ],
+  "validation_commands": [
+    {
+      "name": "full-node-test-suite",
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "covers": [
+        "AR-ROUTING-001",
+        "AR-STATE-001",
+        "AR-COMPLETION-001"
+      ],
+      "test_paths": [
+        "tests/routing-metadata.test.mjs",
+        "tests/workflow-state.test.mjs",
+        "tests/metacognitive-gate.test.mjs",
+        "tests/migration.test.mjs"
+      ],
+      "cwd": ".",
+      "timeout_seconds": 120
+    },
+    {
+      "name": "source-doctor",
+      "argv": [
+        "node",
+        "bin/agentic-runner.mjs",
+        "doctor",
+        "--target-cwd",
+        "."
+      ],
+      "covers": [],
+      "test_paths": [],
+      "cwd": ".",
+      "timeout_seconds": 30
+    }
+  ],
+  "runtime_boundaries": {
+    "source_of_truth": ".",
+    "generated_or_runtime_paths": [
+      "/Users/suzukimakoto/.codex/plugins/cache/local-plugins/agentic-runner",
+      ".agentic-runner/",
+      ".coding-agents/"
+    ],
+    "forbidden_source_paths": [
+      "/Users/suzukimakoto/.codex/plugins/cache",
+      "/Users/suzukimakoto/.codex/skills/.system"
+    ]
+  },
+  "user_facing_ui": {
+    "present": false
+  },
+  "production_contract": {
+    "reviewed": true,
+    "rules": [
+      {
+        "id": "AR-ROUTING-001",
+        "description": "Agentic Runner remains explicit-only and preserves declared specialist ownership instead of auto-routing generic work.",
+        "enforcement_points": [
+          "bin/agentic-runner.mjs",
+          ".codex-plugin/plugin.json"
+        ],
+        "tests": [
+          "tests/routing-metadata.test.mjs"
+        ]
+      },
+      {
+        "id": "AR-STATE-001",
+        "description": "Workflow writes stay inside the target Git worktree's ignored .agentic-runner state and runner scope checks reject out-of-scope changes.",
+        "enforcement_points": [
+          "bin/agentic-runner.mjs",
+          "scripts/migrate-legacy-agentic-runner-state.mjs"
+        ],
+        "tests": [
+          "tests/workflow-state.test.mjs",
+          "tests/migration.test.mjs"
+        ]
+      },
+      {
+        "id": "AR-COMPLETION-001",
+        "description": "Current workflow packets enforce lifecycle, supervision, metacognitive, and contract-coverage completion evidence.",
+        "enforcement_points": [
+          "bin/agentic-runner.mjs"
+        ],
+        "tests": [
+          "tests/workflow-state.test.mjs",
+          "tests/metacognitive-gate.test.mjs"
+        ]
+      }
+    ]
+  }
+}

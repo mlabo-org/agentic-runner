@@ -1,0 +1,4 @@
+interface:
+  display_name: Agentic Runner
+  short_description: Explicit Agentic Runner state and source CLI workflow
+  default_prompt: Use $agentic-runner only for this explicitly named Agentic Runner state or source CLI task.

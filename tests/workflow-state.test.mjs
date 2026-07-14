@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +29,30 @@ test("source identity rejects legacy Coding Agents identity misuse but allows co
   }
 
   assert.deepEqual(hits, []);
+});
+
+test("help avoids Git discovery before a command needs repository context", () => {
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "agentic-runner-help-path-"));
+  try {
+    const marker = path.join(fakeBin, "git-called");
+    const fakeGit = path.join(fakeBin, "git");
+    writeFileSync(fakeGit, `#!/usr/bin/env node
+require("node:fs").writeFileSync(${JSON.stringify(marker)}, "called\\n", "utf8");
+`, "utf8");
+    chmodSync(fakeGit, 0o755);
+
+    const result = runCli(["--help"], {
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(existsSync(marker), false);
+  } finally {
+    rmSync(fakeBin, { recursive: true, force: true });
+  }
 });
 
 test("doctor reports explicit self-host gate for the Agentic Runner source repo", () => {
@@ -105,6 +129,24 @@ test("intake and normalization preserve manual notes outside generated blocks", 
     assert.equal(normalized.status, 0, normalized.stderr);
     assert.match(readState(repo, "decisions.md"), /## Manual Decision[\s\S]*Keep this accepted note\./);
     assert.match(readState(repo, "audit.md"), /^# Manual Audit Preamble[\s\S]*Keep this preamble\./);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("repeated intake does not rewrite unchanged generated files", async () => {
+  const repo = makeTempGitRepo();
+  try {
+    const options = { taskId: "stable-intake", epoch: "e1", scope: "README.md" };
+    intake(repo, options);
+    const projectPath = path.join(repo, ".agentic-runner", "project.md");
+    const before = statSync(projectPath, { bigint: true }).mtimeNs;
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    intake(repo, options);
+
+    const after = statSync(projectPath, { bigint: true }).mtimeNs;
+    assert.equal(after, before);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

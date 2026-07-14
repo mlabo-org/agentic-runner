@@ -13,10 +13,11 @@ const END = "<!-- agentic-runner-mvp:end -->";
 const STATE_DIR_NAME = ".agentic-runner";
 const SELF_HOST_GATE_NAME = "Self-Host Gate";
 const SOURCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SOURCE_GIT_ROOT = resolveGitRoot(SOURCE_ROOT);
 const LEGACY_DOCS_SEGMENTS = ["docs", "codex"];
 const RUNNER_FILE = "runner.md";
 const DEFAULT_RUNNER_TIMEOUT_MS = 120000;
+const GIT_ROOT_CACHE = new Map();
+let cachedSourceGitRoot;
 const SUBAGENT_LIFECYCLE =
   "Parent records workflow-state lifecycle disposition after integration or follow-up decisions; this CLI does not close runtime threads.";
 const CHILD_RETURN_LIFECYCLE =
@@ -546,8 +547,10 @@ function run(args) {
     return;
   }
 
-  appendRunnerEntry(commandContext, "Issued Assignments", renderAssignmentPacket(packet));
-  appendRunnerEntry(commandContext, "Process Orchestration Skeletons", renderOrchestrationSkeleton(packet));
+  appendRunnerEntries(commandContext, [
+    { heading: "Issued Assignments", entry: renderAssignmentPacket(packet) },
+    { heading: "Process Orchestration Skeletons", entry: renderOrchestrationSkeleton(packet) },
+  ]);
   console.log(`ok run skeleton: ${packet.role}`);
   console.log("ok spawned: false");
   console.log(`ok work_type: ${workTypeId(packet)}`);
@@ -562,8 +565,10 @@ function orchestrate(args) {
   const packet = requireAssignmentPacket(args, commandContext);
   assertValidIntakeForPacket(commandContext, packet, "orchestrate");
 
-  appendRunnerEntry(commandContext, "Issued Assignments", renderAssignmentPacket(packet));
-  appendRunnerEntry(commandContext, "Orchestration State", renderOrchestrationState(packet));
+  appendRunnerEntries(commandContext, [
+    { heading: "Issued Assignments", entry: renderAssignmentPacket(packet) },
+    { heading: "Orchestration State", entry: renderOrchestrationState(packet) },
+  ]);
   console.log(`ok orchestration_state: ${packet.role}`);
   console.log("ok spawned: false");
   console.log(`ok route_class: ${routeClassId(packet)}`);
@@ -2382,6 +2387,10 @@ ${renderMetacognitiveResultFields(result.metacognitiveGate, "missing from runner
 }
 
 function appendRunnerEntry(commandContext, heading, entry) {
+  appendRunnerEntries(commandContext, [{ heading, entry }]);
+}
+
+function appendRunnerEntries(commandContext, entries) {
   const state = resolveWorkflowState(commandContext.targetCwd);
   assertSelfHostStateWriteAllowed(commandContext, "runner state append");
   prepareStateWrite(state);
@@ -2399,7 +2408,11 @@ ${renderContractCoveragePacketSchema(commandContext)}
 ${METACOGNITIVE_GATE_CONTRACT}
 `;
   const current = existsSync(runnerPath) ? readFileSync(runnerPath, "utf8") : initial;
-  writeFileSync(runnerPath, appendUnderHeading(current, heading, entry), "utf8");
+  const next = entries.reduce(
+    (text, item) => appendUnderHeading(text, item.heading, item.entry),
+    current,
+  );
+  writeFileSync(runnerPath, next, "utf8");
   finalizeStateWrite(state);
 }
 
@@ -2426,15 +2439,16 @@ function validateAssignmentFiles(stateDir) {
   const results = [];
   let fatal = false;
   let checkedFiles = 0;
+
+  if (!existsSync(stateDir)) {
+    return { results: [["warn", `missing workflow state directory: ${stateDir}`]], fatal: true };
+  }
+
   const assignmentPath = path.join(stateDir, "assignments.md");
   const workflowGate = readWorkflowMetacognitiveContext(stateDir);
   const contractCoverage = readWorkflowContractCoverageContext(stateDir);
   const identity = readWorkflowTaskIdentity(stateDir);
   const routeRequired = workflowStateHasRouteDecision(stateDir);
-
-  if (!existsSync(stateDir)) {
-    return { results: [["warn", `missing workflow state directory: ${stateDir}`]], fatal: true };
-  }
 
   if (identity.errors.length) {
     results.push(["warn", `invalid workflow identity fields: ${identity.errors.join(", ")}`]);
@@ -3677,7 +3691,8 @@ function upsertGenerated(filePath, body) {
     const current = readFileSync(filePath, "utf8");
     const merged = replaceGeneratedBlock(current, block);
     if (merged !== null) {
-      writeFileSync(filePath, ensureTrailingNewline(merged), "utf8");
+      const next = ensureTrailingNewline(merged);
+      if (next !== current) writeFileSync(filePath, next, "utf8");
       return;
     }
   }
@@ -3747,14 +3762,26 @@ function resolveWorkflowState(cwd) {
   };
 }
 
+function resolveSourceGitRoot() {
+  if (cachedSourceGitRoot === undefined) {
+    cachedSourceGitRoot = resolveGitRoot(SOURCE_ROOT);
+  }
+  return cachedSourceGitRoot;
+}
+
 function resolveGitRoot(cwd) {
+  const cacheKey = path.resolve(cwd);
+  if (GIT_ROOT_CACHE.has(cacheKey)) return GIT_ROOT_CACHE.get(cacheKey);
   try {
     const output = execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
-    return output ? path.resolve(output) : null;
+    const gitRoot = output ? path.resolve(output) : null;
+    GIT_ROOT_CACHE.set(cacheKey, gitRoot);
+    return gitRoot;
   } catch {
+    GIT_ROOT_CACHE.set(cacheKey, null);
     return null;
   }
 }
@@ -3778,12 +3805,13 @@ function findLegacyStateDirs(cwd, gitRoot) {
 function prepareStateWrite(state) {
   if (!state.gitRoot) return;
   ensureStateExcluded(state);
-  assertStateDirGitSafe(state);
+  assertStateDirUntracked(state);
+  assertStateDirStatusClean(state);
 }
 
 function finalizeStateWrite(state) {
   if (!state.gitRoot) return;
-  assertStateDirGitSafe(state);
+  assertStateDirStatusClean(state);
 }
 
 function ensureStateExcluded(state) {
@@ -3841,12 +3869,14 @@ function resolveGitExcludePath(gitRoot) {
   return path.isAbsolute(output) ? output : path.resolve(gitRoot, output);
 }
 
-function assertStateDirGitSafe(state) {
+function assertStateDirUntracked(state) {
   const tracked = readGitOutput(state.gitRoot, ["ls-files", "--", STATE_DIR_NAME], "check tracked workflow state").trim();
   if (tracked) {
     throw new CliError(`refusing to write state: ${STATE_DIR_NAME} is tracked by Git:\n${tracked}`, 1);
   }
+}
 
+function assertStateDirStatusClean(state) {
   const status = readGitOutput(state.gitRoot, ["status", "--short", "--", STATE_DIR_NAME], "check workflow state status").trim();
   if (status) {
     throw new CliError(
@@ -3885,14 +3915,15 @@ function resolveCommandContext(args) {
   const invocationCwd = args.cwd ? requireDirectory(args.cwd, "--cwd") : requireDirectory(process.cwd(), "process cwd");
   const targetCwd = args.targetCwd ? requireDirectory(args.targetCwd, "--target-cwd") : invocationCwd;
   const targetGitRoot = resolveGitRoot(targetCwd);
-  const selfHostTarget = Boolean(SOURCE_GIT_ROOT && targetGitRoot && sameRealPath(SOURCE_GIT_ROOT, targetGitRoot));
+  const sourceGitRoot = resolveSourceGitRoot();
+  const selfHostTarget = Boolean(sourceGitRoot && targetGitRoot && sameRealPath(sourceGitRoot, targetGitRoot));
   return {
     invocationCwd,
     targetCwd,
     targetCwdExplicit: Boolean(args.targetCwd),
     targetGitRoot,
     sourceRoot: SOURCE_ROOT,
-    sourceGitRoot: SOURCE_GIT_ROOT,
+    sourceGitRoot,
     selfHostTarget,
     workType: resolveWorkType(args.workType),
   };
