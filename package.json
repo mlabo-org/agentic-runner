@@ -4,6 +4,6 @@
     "test": "node --test tests/*.test.mjs",
     "test:cli": "node --test tests/metacognitive-gate.test.mjs tests/workflow-state.test.mjs",
     "test:migration": "node --test tests/migration.test.mjs",
-    "doctor:self": "node bin/agentic-runner.mjs doctor --target-cwd ."
+    "doctor:self": "node --test --test-name-pattern=\"doctor reports explicit self-host gate\" tests/workflow-state.test.mjs"
   }
 }

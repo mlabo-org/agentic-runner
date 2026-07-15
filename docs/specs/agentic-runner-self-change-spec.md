@@ -19,7 +19,8 @@ Items 0-8 are Agentic Runner self changes. Item 9 is external legacy cleanup.
      external supervisor owns policy decisions, source edits, verification
      acceptance, commits, cache refresh, and activation.
    - Self-host mode means Agentic Runner may orchestrate edits to
-     `/Users/suzukimakoto/plugins/agentic-runner` using its own
+     `AGENTIC_RUNNER_SOURCE_ROOT` (for example,
+     `$HOME/plugins/agentic-runner`) using its own
      `.agentic-runner/` workflow state, assignments, runner prompts, or scoped
      subagent handoff material.
    - Self-host mode is allowed only when the user explicitly requests or

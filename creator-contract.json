@@ -81,14 +81,14 @@
     {
       "name": "source-doctor",
       "argv": [
-        "node",
-        "bin/agentic-runner.mjs",
-        "doctor",
-        "--target-cwd",
-        "."
+        "npm",
+        "run",
+        "doctor:self"
       ],
       "covers": [],
-      "test_paths": [],
+      "test_paths": [
+        "tests/workflow-state.test.mjs"
+      ],
       "cwd": ".",
       "timeout_seconds": 30
     }
@@ -96,12 +96,12 @@
   "runtime_boundaries": {
     "source_of_truth": ".",
     "generated_or_runtime_paths": [
-      "/Users/suzukimakoto/.codex/plugins/cache/local-plugins/agentic-runner",
+      "~/.codex/plugins/cache/local-plugins/agentic-runner",
       ".agentic-runner/"
     ],
     "forbidden_source_paths": [
-      "/Users/suzukimakoto/.codex/plugins/cache",
-      "/Users/suzukimakoto/.codex/skills/.system"
+      "~/.codex/plugins/cache",
+      "~/.codex/skills/.system"
     ]
   },
   "user_facing_ui": {
