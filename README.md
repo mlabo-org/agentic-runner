@@ -79,6 +79,26 @@ codex plugin add coding-agents@agentic-control-plane
 
 Restart Codex or start a new task after installation so the plugin surfaces you installed are loaded.
 
+## Configure Official Codex Subagents
+
+Any branch that dispatches official Codex subagents uses the host Codex multi-agent limits. The Build Week demo used the current GPT-5.6-era V2 format in `~/.codex/config.toml`:
+
+```toml
+[features]
+multi_agent = true
+
+[features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 30
+
+[agents]
+max_depth = 2
+```
+
+`max_concurrent_threads_per_session = 30` is a session-wide ceiling on concurrently open agent threads. It is not a target that every task should fill, and the two plugins do not receive separate pools of 30 threads. `max_depth = 2` counts the root task as depth 0, so a delegated control or coding branch at depth 1 can create one bounded worker layer at depth 2.
+
+In the optional paired topology, Agentic Runner owns upper cross-output control, Coding Agents owns the coding workflow branch, and official Codex subagents execute bounded work. The two plugin contracts do not override or multiply the host limits. Each plugin remains independently usable, and a simpler standalone run may use a shallower topology and only the threads that are useful. Restart Codex or begin a fresh task after changing `config.toml`.
+
 ## Try It Alone Or Paired
 
 For standalone upper control, use an explicit prompt such as:
