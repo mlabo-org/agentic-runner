@@ -2,6 +2,9 @@
   "name": "agentic-runner",
   "version": "0.1.0",
   "description": "Agentic Runner explicit-only: named requests, existing .agentic-runner state, or its source CLI continuation, audit, and repair. Generic orchestration never auto-routes here.",
+  "homepage": "https://github.com/mlabo-org/agentic-runner#readme",
+  "repository": "https://github.com/mlabo-org/agentic-runner",
+  "license": "MIT",
   "skills": "./skills/",
   "keywords": [
     "agentic-runner",
@@ -18,8 +21,9 @@
     "displayName": "Agentic Runner",
     "shortDescription": "Explicit-only Agentic Runner for named requests or existing .agentic-runner state/Agentic Runner source CLI continuation, audit, and repair.",
     "longDescription": "Legacy control-plane selected only by its name, existing .agentic-runner state, or Agentic Runner source CLI request. Generic orchestration, mixed work, supervision, delegation, and subagent coordination do not auto-route here.",
-    "developerName": "suzukimakoto",
-    "category": "Productivity",
+    "developerName": "Makoto Suzuki",
+    "category": "Developer Tools",
+    "websiteURL": "https://github.com/mlabo-org/agentic-runner",
     "capabilities": [
       "Existing .agentic-runner state continuation",
       "Existing .agentic-runner state audit and repair",
@@ -31,6 +35,7 @@
     "brandColor": "#2563EB"
   },
   "author": {
-    "name": "Local developer"
+    "name": "Makoto Suzuki",
+    "url": "https://github.com/mlabo-org"
   }
 }

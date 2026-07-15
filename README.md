@@ -1,34 +1,108 @@
-# Agentic Runner
+# Agentic Runner + Coding Agents
 
-Agentic Runner is a thin generic AGENT upper control-plane plugin for explicit Agentic Runner requests. It records route state, handoff, resume checkpoints, audit context, scoped assignments, and supervision metadata for declared subordinate owners such as tools, skills, plugins, MCP/app surfaces, `coding-agents`, Agentic StructCiv, CodexVideo, and future specialist workflows.
+Agentic Runner and [Coding Agents](https://github.com/mlabo-org/coding-agents) form a verifiable two-layer control plane for Codex coding workflows, including one parent request that fans out into multiple artifacts. Agentic Runner sits upstream and records route, scope, lifecycle, supervision, handoff, and cross-workflow audit evidence. Coding Agents records bounded coding assignments and delegates actual worker execution only through official Codex subagent tools.
 
-It is not the execution owner for ordinary one-off single-domain tasks. Leaf tools, skills, plugins, and specialist workflows produce domain artifacts; Agentic Runner keeps the route and cross-workflow state inspectable.
+Both plugins are explicit-only. Ordinary coding, debugging, delegation, or orchestration does not automatically route through them.
 
-## Use Cases
+OpenAI Devpost category: **Developer Tools**
 
-- Explicit Agentic Runner or control-plane routing requests.
-- `.agentic-runner/` workflow state with `task_id`, `epoch`, `scope`, and lifecycle fields.
-- Handoff, resume, audit, and supervised assignment packets.
-- Source/cache/runtime boundary audits for plugin-source work.
-- Legacy `docs/codex` or `doc/codex` migration planning.
+## Architecture
 
-## Write Boundary
+```mermaid
+flowchart TD
+    A["User explicitly names both plugins"] --> B["Agentic Runner<br/>route, scope, lifecycle, audit"]
+    B --> C["Coding Agents<br/>intake, assign, collect, finalize"]
+    B --> H["Other declared owners<br/>tools, skills, plugins, workflows"]
+    C --> D["Official Codex subagents<br/>bounded code work"]
+    D --> C
+    C --> B
+    H --> B
+    B --> E["Main Codex thread<br/>integration, policy, final answer"]
+    B -. "workflow state" .-> F[".agentic-runner/"]
+    C -. "workflow state" .-> G["Coding Agents state"]
+```
 
-The plugin can write scoped workflow and migration state when the active command asks for it:
+- Agentic Runner binds each supervised workflow to a `task_id`, `epoch`, declared scope, lifecycle, and completion evidence.
+- Coding Agents preserves intake, assignment, collection, finalization, and handoff records while keeping its CLI record-only.
+- Worker dispatch uses the official Codex subagent surface. Coding Agents never launches `codex exec` or a custom process runner.
+- The main Codex thread retains policy, safety, integration, verification, and final-response ownership.
+- Route, state, and contract checks fail closed when required evidence is missing or inconsistent.
 
-- `<git-root>/.agentic-runner/`
-- the target repository's `.git/info/exclude`
-- migration reports and preflight backups when migration apply/report commands are explicitly run
+## Upstream Control For Multi-Output Work
 
-This does not include source edits, commits, cache refresh, plugin activation, marketplace updates, broad repository cleanup, or specialist-owned production artifacts.
+Agentic Runner controls the fan-out and convergence of a larger operation. It does not replace leaf generators. It turns one explicit parent request into an inspectable route map and keeps every declared execution owner accountable for its own artifact and verification evidence.
 
-## Source And Cache
+- Classify the parent route as `coding`, `article`, `video`, `plugin-source`, or `mixed`, then declare the primary and controlled workflows.
+- Bind the whole operation to one `task_id`, `epoch`, scope, lifecycle contract, and shared completion conditions.
+- Record multiple scoped assignments under that parent task, each with an explicit specialist owner and expected output. Independent work may run concurrently only when the parent determines that it is safe and the active execution surfaces support it.
+- Keep handoff artifacts, resume checkpoints, stale-route handling, supervision state, and cross-workflow completion visible at the upper layer.
+- Collect the artifact and verification evidence from every leaf owner. A blocked or failed branch remains explicit instead of allowing an incomplete batch to appear complete.
+- Enforce Contract Coverage before final integration: accepted decisions, route/spec contracts, and completion conditions must map to concrete evidence.
 
-This directory is the plugin source of truth. The installed runtime copy under `~/.codex/plugins/cache/` is disposable cache and should not be patched as the primary edit target.
+For example:
 
-After source changes, validate source behavior first. Cache refresh and Codex restart or new-thread activation are separate operational steps.
+> Use Agentic Runner explicitly to control a three-output release batch: source and tests through Coding Agents, release notes through a documentation owner, and a demo asset through a declared media owner. Keep shared constraints at the parent layer, assign an owner and acceptance evidence to every output, allow parallel work only where safe, and do not finalize until all three outputs pass their checks.
 
-## Checks
+The leaf workflows still produce their domain artifacts. Agentic Runner supplies the upstream control needed to keep a multi-output generation batch coherent, resumable, auditable, and complete.
+
+## Install Both Plugins
+
+Add this repository as a marketplace, then install both entries:
+
+```sh
+codex plugin marketplace add mlabo-org/agentic-runner --ref main
+codex plugin add agentic-runner@agentic-control-plane
+codex plugin add coding-agents@agentic-control-plane
+```
+
+Restart Codex or start a new task after installation so the newly installed plugin surfaces are loaded.
+
+## Try The Pair
+
+Open either repository in Codex and use an explicit prompt such as:
+
+> Use Agentic Runner to supervise this repository audit. Route the bounded inspection to Coding Agents. Inspect README.md and package.json, run npm test, make no source changes or commits, and return the assignment state plus verification evidence.
+
+The explicit names are intentional: neither plugin claims generic coding or orchestration requests.
+
+## Run From Source
+
+The repositories have no third-party runtime dependencies. A recent Node.js release and Git are required for source checks.
+
+```sh
+git clone https://github.com/mlabo-org/agentic-runner.git
+cd agentic-runner
+npm test
+npm run doctor:self
+
+cd ..
+git clone https://github.com/mlabo-org/coding-agents.git
+cd coding-agents
+npm test
+npm run doctor:self
+```
+
+`doctor:self` validates the source-tree CLI. It does not claim that a separately installed plugin cache has been refreshed.
+
+## Build Week Extension
+
+The control-plane baseline existed before the 2026 OpenAI Build Week eligibility window. The submission asks judges to evaluate only these extensions made after the window opened:
+
+- [Agentic Runner `a432c84`](https://github.com/mlabo-org/agentic-runner/commit/a432c84cb65689e7436cbfcd71184713757f7854) — lazy Git discovery, cached root resolution, batched runner-state appends, no-op rewrite avoidance, and a machine-checkable creator contract.
+- [Coding Agents `a68c1b6`](https://github.com/mlabo-org/coding-agents/commit/a68c1b6585c79c11d0a5d89673659cd4d3c4c050) — removed the CLI-spawned Codex worker route and made official Codex subagents the only worker-dispatch path.
+- [Coding Agents `678f9a9`](https://github.com/mlabo-org/coding-agents/commit/678f9a9224a562098f5909ee1037dd7677d79a96) — centralized scaffold contracts and reduced workflow-state overhead while preserving lifecycle and compatibility checks.
+
+The current source suites contain 82 passing tests for Agentic Runner and 61 passing tests for Coding Agents.
+
+## Platform And Boundaries
+
+Verified on macOS 26.5.2 with Codex CLI 0.144.2, Node.js 24.18.0, and Git 2.55.0. The implementation uses Node.js standard-library APIs and Git, but other operating systems have not yet been verified.
+
+Agentic Runner may write scoped workflow state under `<git-root>/.agentic-runner/`, update the target repository's `.git/info/exclude`, and create migration reports or preflight backups only when the corresponding command is explicitly invoked. It does not independently authorize source edits, commits, cache refresh, plugin activation, publishing, or broad repository cleanup.
+
+The source repositories are authoritative. Installed copies under `~/.codex/plugins/cache/` are disposable runtime cache and must not be edited as source.
+
+## Development Checks
 
 ```sh
 npm test
@@ -37,8 +111,8 @@ npm run test:migration
 npm run doctor:self
 ```
 
-`doctor:self` validates the source-tree CLI against this plugin repository. It does not prove that the installed cache copy has been refreshed or activated.
+`scripts/migrate-legacy-agentic-runner-state.mjs` defaults to dry-run. Apply mode is explicit and creates preflight backups before changing a repository; it never deletes legacy directories.
 
-## Legacy Migration
+## License
 
-`scripts/migrate-legacy-agentic-runner-state.mjs` defaults to dry-run. Apply mode is explicit and creates preflight backups before changing a repository. Legacy directories are copied and untracked from Git when applicable; they are not deleted.
+MIT License. Copyright (c) 2026 Makoto Suzuki.
