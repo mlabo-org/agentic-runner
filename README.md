@@ -119,6 +119,10 @@ npm run doctor:self
 
 The control-plane baseline existed before the 2026 OpenAI Build Week eligibility window. The submission asks judges to evaluate only these extensions made after the window opened:
 
+Agentic Runner and Coding Agents had been under development long before OpenAI Build Week. With the arrival of GPT-5.6, we used GPT-5.6 Sol ULTRA to carry out a large-scale refactor so both plugins would operate correctly in the new Codex environment. GPT-5.6 Sol ULTRA accelerated architecture inspection, specification discussion, cross-file implementation and review, test execution, and the conversion of accepted decisions into public documentation. This was a modernization of a mature baseline, not a claim that the entire project was created during Build Week.
+
+The explicit plugin path targets fine-grained behavior that ULTRA mode does not provide. Both can coexist in one installation, but routing is purpose-based and mutually exclusive: each task selects either ULTRA or the explicit plugin path, never both. Within the plugin path, Agentic Runner and Coding Agents remain independently installable and usable, and may optionally be paired. Routing stays explicit-only; Coding Agents dispatches workers only through official Codex subagents; and source repositories remain separate from disposable plugin cache. Using GPT-5.6 Sol ULTRA for the refactor is distinct from choosing a runtime route for a later task.
+
 - [Agentic Runner `a432c84`](https://github.com/mlabo-org/agentic-runner/commit/a432c84cb65689e7436cbfcd71184713757f7854) — lazy Git discovery, cached root resolution, batched runner-state appends, no-op rewrite avoidance, and a machine-checkable creator contract.
 - [Coding Agents `a68c1b6`](https://github.com/mlabo-org/coding-agents/commit/a68c1b6585c79c11d0a5d89673659cd4d3c4c050) — removed the CLI-spawned Codex worker route and made official Codex subagents the only worker-dispatch path.
 - [Coding Agents `678f9a9`](https://github.com/mlabo-org/coding-agents/commit/678f9a9224a562098f5909ee1037dd7677d79a96) — centralized scaffold contracts and reduced workflow-state overhead while preserving lifecycle and compatibility checks.
